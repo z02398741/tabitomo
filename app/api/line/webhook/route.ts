@@ -19,7 +19,8 @@ function verifySignature(body: string, signature: string): boolean {
 }
 
 async function reply(replyToken: string, messages: any[]) {
-  await fetch('https://api.line.me/v2/bot/message/reply', {
+  console.log('reply called:', replyToken, JSON.stringify(messages))
+  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -27,6 +28,8 @@ async function reply(replyToken: string, messages: any[]) {
     },
     body: JSON.stringify({ replyToken, messages }),
   })
+  const result = await res.text()
+  console.log('reply result:', res.status, result)
 }
 
 function formatTrip(trip: any): string {
