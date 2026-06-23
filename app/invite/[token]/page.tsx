@@ -64,6 +64,31 @@ export default async function InvitePage({
     .single()
 
   if (!existing) {
+    // Enforce 20-member limit
+    const { count } = await supabase
+      .from('trip_members')
+      .select('*', { count: 'exact', head: true })
+      .eq('trip_id', invite.trip_id)
+
+    if ((count ?? 0) >= 20) {
+      return (
+        <div style={{
+          minHeight: '100vh', background: '#0d0f14',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#edf0f7', fontFamily: 'Inter, sans-serif',
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '32px', marginBottom: '12px' }}>🚫</div>
+            <div style={{ fontSize: '16px', marginBottom: '8px' }}>メンバーが上限に達しています</div>
+            <div style={{ fontSize: '13px', color: '#8b93b0' }}>この旅行は最大20人まで参加できます</div>
+            <a href="/" style={{ color: '#6c8ef5', fontSize: '14px', marginTop: '16px', display: 'block' }}>
+              トップに戻る
+            </a>
+          </div>
+        </div>
+      )
+    }
+
     const { error: insertError } = await supabase.from('trip_members').insert({
       trip_id: invite.trip_id,
       user_id: userId,

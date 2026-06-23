@@ -697,6 +697,7 @@ export default function TripClient({ trip: initialTrip, session }: {
   session: any
 }) {
   const router = useRouter()
+  const currentUserId: string | undefined = (session?.user as { id?: string })?.id
   const [trip,        setTrip]        = useState(() => ({
     ...initialTrip,
     days: (initialTrip.days ?? []).map(d => ({
@@ -708,6 +709,9 @@ export default function TripClient({ trip: initialTrip, session }: {
   const [showExport,   setShowExport]   = useState(false)
   const [inviteUrl,    setInviteUrl]    = useState<string | null>(null)
   const [showInvite,   setShowInvite]   = useState(false)
+  const [members,      setMembers]      = useState<{ userId: string; role: string; name: string | null; image: string | null }[]>([])
+  const [memberMax,    setMemberMax]    = useState(20)
+  const [linkCopied,   setLinkCopied]   = useState(false)
   const [showLineBind,  setShowLineBind]  = useState(false)
   const [lineCopied,    setLineCopied]    = useState(false)
   const [showBatchAlert, setShowBatchAlert] = useState(false)
@@ -771,10 +775,27 @@ export default function TripClient({ trip: initialTrip, session }: {
   }
 
   const handleInvite = async () => {
-    const res = await fetch(`/api/trips/${trip.id}/invite`, { method: 'POST' })
-    const { url } = await res.json()
+    const [invRes, memRes] = await Promise.all([
+      fetch(`/api/trips/${trip.id}/invite`, { method: 'POST' }),
+      fetch(`/api/trips/${trip.id}/members`),
+    ])
+    const { url } = await invRes.json()
+    const { members: m, max } = await memRes.json()
     setInviteUrl(url)
+    setMembers(m ?? [])
+    setMemberMax(max ?? 20)
+    setLinkCopied(false)
     setShowInvite(true)
+  }
+
+  const handleRevoke = async () => {
+    await fetch(`/api/trips/${trip.id}/invite`, { method: 'DELETE' })
+    setInviteUrl(null)
+  }
+
+  const handleRemoveMember = async (userId: string) => {
+    await fetch(`/api/trips/${trip.id}/members?userId=${userId}`, { method: 'DELETE' })
+    setMembers(prev => prev.filter(m => m.userId !== userId))
   }
 
   return (
@@ -957,30 +978,105 @@ export default function TripClient({ trip: initialTrip, session }: {
           )}
         </Modal>
       )}
-      {showInvite && inviteUrl && (
+      {showInvite && (
         <Modal onClose={() => setShowInvite(false)}>
+          {/* Header */}
           <div style={{ display:'flex', justifyContent:'space-between',
             alignItems:'center', marginBottom:'16px' }}>
             <span style={{ fontSize:'16px', fontWeight:700, color:T.textPri }}>
-              メンバーを招待
+              👥 メンバー管理
             </span>
             <button onClick={() => setShowInvite(false)} style={{ background:'none',
               border:'none', color:T.textDim, cursor:'pointer', fontSize:'20px' }}>×</button>
           </div>
-          <div style={{ fontSize:'13px', color:T.textSec, marginBottom:'12px' }}>
-            以下のリンクをLINEグループに送ってください。7日間有効です。
+
+          {/* Member count */}
+          <div style={{ fontSize:'12px', color:T.textSec, marginBottom:'12px' }}>
+            メンバー {members.length} / {memberMax} 人
+            <span style={{ display:'inline-block', marginLeft:'8px',
+              width:`${(members.length / memberMax) * 100}%`, maxWidth:'80px',
+              height:'4px', background:T.accent+'66', borderRadius:'2px',
+              verticalAlign:'middle' }}/>
           </div>
-          <div style={{ background:'#13161e', border:`1px solid ${T.border}`,
-            borderRadius:'10px', padding:'12px', fontSize:'12px', color:T.accentLt,
-            wordBreak:'break-all', marginBottom:'14px' }}>
-            {inviteUrl}
+
+          {/* Member list */}
+          <div style={{ maxHeight:'200px', overflowY:'auto', marginBottom:'16px' }}>
+            {members.map(m => {
+              const isOwner = m.role === 'owner'
+              const isSelf  = m.userId === currentUserId
+              const canRemove = !isOwner && !isSelf &&
+                members.find(x => x.userId === currentUserId)?.role === 'owner'
+              return (
+                <div key={m.userId} style={{ display:'flex', alignItems:'center',
+                  gap:'10px', padding:'8px 0',
+                  borderBottom:`1px solid ${T.border}` }}>
+                  {m.image
+                    ? <div style={{ width:'32px', height:'32px', borderRadius:'50%',
+                        backgroundImage:`url(${m.image})`, backgroundSize:'cover',
+                        backgroundPosition:'center', flexShrink:0 }}/>
+                    : <div style={{ width:'32px', height:'32px', borderRadius:'50%',
+                        background:T.accentDim, display:'flex', alignItems:'center',
+                        justifyContent:'center', fontSize:'14px', color:T.accent }}>
+                        {(m.name ?? '?')[0]}
+                      </div>
+                  }
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:'13px', color:T.textPri, fontWeight:500 }}>
+                      {m.name ?? 'ユーザー'}
+                      {isSelf && <span style={{ fontSize:'10px', color:T.textDim, marginLeft:'6px' }}>（あなた）</span>}
+                    </div>
+                    <div style={{ fontSize:'11px', color:T.textDim }}>
+                      {isOwner ? 'オーナー' : 'メンバー'}
+                    </div>
+                  </div>
+                  {canRemove && (
+                    <button onClick={() => handleRemoveMember(m.userId)}
+                      style={{ padding:'4px 10px', borderRadius:'7px', border:'none',
+                        background:'#f0629218', color:'#f06292', cursor:'pointer',
+                        fontSize:'11px', fontWeight:600 }}>
+                      除名
+                    </button>
+                  )}
+                </div>
+              )
+            })}
           </div>
-          <button onClick={() => navigator.clipboard.writeText(inviteUrl)}
-            style={{ width:'100%', padding:'11px', borderRadius:'10px',
-              border:'none', background:T.accent, color:'#fff',
-              cursor:'pointer', fontSize:'14px', fontWeight:600 }}>
-            リンクをコピー
-          </button>
+
+          {/* Invite link */}
+          {inviteUrl ? (
+            <>
+              <div style={{ fontSize:'12px', color:T.textSec, marginBottom:'8px' }}>
+                招待リンク（7日間有効 · 何人でも使用可）
+              </div>
+              <div style={{ background:'#13161e', border:`1px solid ${T.border}`,
+                borderRadius:'10px', padding:'10px 12px', fontSize:'11px',
+                color:T.accentLt, wordBreak:'break-all', marginBottom:'10px' }}>
+                {inviteUrl}
+              </div>
+              <div style={{ display:'flex', gap:'8px' }}>
+                <button onClick={() => {
+                  navigator.clipboard.writeText(inviteUrl)
+                  setLinkCopied(true)
+                  setTimeout(() => setLinkCopied(false), 2000)
+                }} style={{ flex:1, padding:'10px', borderRadius:'10px',
+                  border:'none', background: linkCopied ? '#4caf8f' : T.accent,
+                  color:'#fff', cursor:'pointer', fontSize:'13px', fontWeight:600 }}>
+                  {linkCopied ? '✓ コピー済み' : 'リンクをコピー'}
+                </button>
+                <button onClick={handleRevoke}
+                  style={{ padding:'10px 14px', borderRadius:'10px',
+                    border:`1px solid #f0629244`, background:'#f0629212',
+                    color:'#f06292', cursor:'pointer', fontSize:'12px', fontWeight:600 }}>
+                  無効化
+                </button>
+              </div>
+            </>
+          ) : (
+            <div style={{ textAlign:'center', padding:'12px 0',
+              fontSize:'13px', color:T.textDim }}>
+              招待リンクは無効化されています
+            </div>
+          )}
         </Modal>
       )}
     </div>

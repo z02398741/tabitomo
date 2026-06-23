@@ -52,3 +52,21 @@ export async function POST(
   const url = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${token}`
   return NextResponse.json({ url })
 }
+
+// DELETE /api/trips/[id]/invite — revoke active invite tokens
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { id: tripId } = await params
+  await getAdmin()
+    .from('invite_tokens')
+    .update({ used: true })
+    .eq('trip_id', tripId)
+    .eq('used', false)
+
+  return new NextResponse(null, { status: 204 })
+}
