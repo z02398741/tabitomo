@@ -23,18 +23,30 @@ export async function GET(
   const { id: tripId } = await params
   const supabase = getAdmin()
 
-  const { data, error } = await supabase
+  const { data: rows, error } = await supabase
     .from('trip_members')
-    .select('user_id, role, user_profiles(name, image)')
+    .select('user_id, role')
     .eq('trip_id', tripId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const members = (data ?? []).map((m: any) => ({
+  const userIds = (rows ?? []).map((r: { user_id: string }) => r.user_id)
+  const profileMap: Record<string, { name: string | null; image: string | null }> = {}
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('user_profiles')
+      .select('id, name, image')
+      .in('id', userIds)
+    for (const p of profiles ?? []) {
+      profileMap[p.id] = { name: p.name, image: p.image }
+    }
+  }
+
+  const members = (rows ?? []).map((m: { user_id: string; role: string }) => ({
     userId: m.user_id,
     role: m.role,
-    name: m.user_profiles?.name ?? null,
-    image: m.user_profiles?.image ?? null,
+    name: profileMap[m.user_id]?.name ?? null,
+    image: profileMap[m.user_id]?.image ?? null,
   }))
 
   return NextResponse.json({ members, max: MAX_MEMBERS })
