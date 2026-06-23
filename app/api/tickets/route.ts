@@ -40,6 +40,8 @@ export async function POST(req: Request) {
     .from('tickets')
     .upload(path, file, { contentType: file.type })
 
+  console.log('uploadError:', JSON.stringify(uploadError))
+
   if (uploadError) {
     return NextResponse.json({ error: uploadError.message }, { status: 500 })
   }
