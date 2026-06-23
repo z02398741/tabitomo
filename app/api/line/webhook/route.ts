@@ -24,6 +24,17 @@ function verifySignature(body: string, signature: string): boolean {
   return hash === signature
 }
 
+function sortedDays(days: any[]): any[] {
+  return [...(days ?? [])].sort((a, b) => {
+    if (a.position != null && b.position != null) return a.position - b.position
+    return (a.date ?? '').localeCompare(b.date ?? '')
+  })
+}
+
+function sortedEvents(events: any[]): any[] {
+  return [...(events ?? [])].sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''))
+}
+
 const EVENT_ICON: Record<string, string> = {
   transport: '🚢', gather: '📍', activity: '🤿',
   meal: '🍽', stay: '🏨', free: '🌊',
@@ -43,9 +54,9 @@ function formatTrip(trip: any): string {
   const lines: string[] = [`📍 ${trip.title}`]
   if (trip.transport) lines.push(`🚢 ${trip.transport}`)
   lines.push('')
-  for (const day of trip.days || []) {
+  for (const day of sortedDays(trip.days)) {
     lines.push(`▶ ${day.label}`)
-    for (const ev of day.events || []) {
+    for (const ev of sortedEvents(day.events)) {
       const hasTicket = (ev.tickets?.length ?? 0) > 0
       lines.push(`${EVENT_ICON[ev.type] || '•'} ${ev.time} ${ev.title}${hasTicket ? ' 📎' : ''}`)
     }
@@ -62,7 +73,7 @@ async function getTodayEventsMessages(trip: any): Promise<object[]> {
   const lines = [`📅 ${day.label} の予定`]
   const ticketPaths: Array<{ name: string; path: string }> = []
 
-  for (const ev of day.events) {
+  for (const ev of sortedEvents(day.events)) {
     lines.push(`${EVENT_ICON[ev.type] || '•'} ${ev.time} ${ev.title}`)
     if (ev.note) lines.push(`   📝 ${ev.note}`)
     for (const t of ev.tickets ?? []) {
