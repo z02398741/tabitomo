@@ -70,23 +70,17 @@ function getTodayEvents(trip: any): string {
 
 async function handleCommand(text: string, groupId: string, replyToken: string) {
   const supabase = getAdmin()
-  console.log('handleCommand groupId:', groupId)
 
-  const { data: trip, error } = await supabase
+  const { data: trip } = await supabase
     .from('trips')
     .select(`*, days:trip_days(*, events(*))`)
     .eq('line_group_id', groupId)
     .single()
 
-  console.log('trip:', trip?.title, 'error:', error)
-
-  await reply(replyToken, [{ type: 'text', text: `受信しました：${text}` }])
-  return
-
   if (!trip) {
     await reply(replyToken, [{
       type: 'text',
-      text: '⚠️ このグループにはまだ行程が登録されていません。\nTabitomoアプリで行程を作成してからグループと連携してください。\nhttps://tabitomo-gilt.vercel.app'
+      text: '⚠️ このグループにはまだ行程が登録されていません。\nhttps://tabitomo-gilt.vercel.app'
     }])
     return
   }
