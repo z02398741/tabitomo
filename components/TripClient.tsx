@@ -592,25 +592,33 @@ function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver,
 }
 
 // ── Batch Alert Modal ─────────────────────────────────────────
-function BatchAlertModal({ tripId, onDone, onClose }: {
-  tripId: string
-  onDone: (updated: number, alertMin: number, scope: string) => void
+function BatchAlertModal({ trip, onDone, onClose }: {
+  trip: Trip
+  onDone: (overrides: Record<string, number>) => void
   onClose: () => void
 }) {
-  const [alertMin, setAlertMin] = useState(30)
-  const [scope,    setScope]    = useState<'all' | 'unset'>('unset')
-  const [saving,   setSaving]   = useState(false)
+  // eventId → alert_min の編集状態
+  const [overrides, setOverrides] = useState<Record<string, number>>(() => {
+    const init: Record<string, number> = {}
+    trip.days?.forEach(d => d.events?.forEach(e => { init[e.id] = e.alert_min ?? 0 }))
+    return init
+  })
+  const [saving, setSaving] = useState(false)
 
   const save = async () => {
     setSaving(true)
     try {
-      const res = await fetch(`/api/trips/${tripId}/alert`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ alert_min: alertMin, scope }),
-      })
-      const { updated } = await res.json()
-      onDone(updated, alertMin, scope)
+      // 変更があったイベントのみ更新
+      const allEvents = trip.days?.flatMap(d => d.events || []) || []
+      const changed = allEvents.filter(e => overrides[e.id] !== e.alert_min)
+      await Promise.all(changed.map(e =>
+        fetch(`/api/events/${e.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ alert_min: overrides[e.id] }),
+        })
+      ))
+      onDone(overrides)
     } finally {
       setSaving(false)
     }
@@ -619,46 +627,49 @@ function BatchAlertModal({ tripId, onDone, onClose }: {
   return (
     <Modal onClose={onClose}>
       <div style={{ display:'flex', justifyContent:'space-between',
-        alignItems:'center', marginBottom:'20px' }}>
+        alignItems:'center', marginBottom:'16px' }}>
         <span style={{ fontSize:'16px', fontWeight:700, color:T.textPri }}>
-          {Ico.bell} 通知タイミングを一括設定
+          {Ico.bell} 通知設定
         </span>
         <button onClick={onClose} style={{ background:'none', border:'none',
           color:T.textDim, cursor:'pointer', fontSize:'20px' }}>×</button>
       </div>
 
-      <div style={{ marginBottom:'16px' }}>
-        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
-          color:T.textDim, letterSpacing:'.06em', marginBottom:'8px' }}>通知タイミング</label>
-        <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
-          {ALERT_OPTIONS.filter(o => o.value > 0).map(o => (
-            <button key={o.value} onClick={() => setAlertMin(o.value)} style={{
-              padding:'7px 14px', borderRadius:'20px',
-              border:`1px solid ${alertMin === o.value ? T.rose : T.border}`,
-              background: alertMin === o.value ? T.rose+'22' : 'none',
-              color: alertMin === o.value ? T.rose : T.textSec,
-              cursor:'pointer', fontSize:'12px', fontWeight:600 }}>
-              {o.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ marginBottom:'24px' }}>
-        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
-          color:T.textDim, letterSpacing:'.06em', marginBottom:'8px' }}>対象</label>
-        <div style={{ display:'flex', gap:'6px' }}>
-          {([['unset','通知なしのイベントのみ'],['all','すべてのイベント']] as const).map(([v, l]) => (
-            <button key={v} onClick={() => setScope(v)} style={{
-              padding:'7px 14px', borderRadius:'20px',
-              border:`1px solid ${scope === v ? T.accent : T.border}`,
-              background: scope === v ? T.accentDim : 'none',
-              color: scope === v ? T.accentLt : T.textSec,
-              cursor:'pointer', fontSize:'12px', fontWeight:600 }}>
-              {l}
-            </button>
-          ))}
-        </div>
+      <div style={{ maxHeight:'55vh', overflowY:'auto', marginBottom:'16px' }}>
+        {(trip.days || []).map(day => (
+          <div key={day.id} style={{ marginBottom:'16px' }}>
+            <div style={{ fontSize:'11px', fontWeight:700, color:T.textDim,
+              letterSpacing:'.06em', marginBottom:'8px', paddingBottom:'6px',
+              borderBottom:`1px solid ${T.border}` }}>
+              {day.label}
+            </div>
+            {(day.events || []).length === 0 && (
+              <div style={{ fontSize:'12px', color:T.textDim, paddingLeft:'4px' }}>イベントなし</div>
+            )}
+            {(day.events || []).map(ev => (
+              <div key={ev.id} style={{ display:'flex', alignItems:'center',
+                justifyContent:'space-between', gap:'8px',
+                padding:'8px 0', borderBottom:`1px solid ${T.border}22` }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <span style={{ fontSize:'12px', fontWeight:600, color:T.textPri }}>
+                    {ev.time} {ev.title}
+                  </span>
+                </div>
+                <select
+                  value={overrides[ev.id] ?? 0}
+                  onChange={e => setOverrides(p => ({ ...p, [ev.id]: Number(e.target.value) }))}
+                  style={{ padding:'5px 8px', borderRadius:'8px', fontSize:'12px',
+                    border:`1px solid ${overrides[ev.id] !== (ev.alert_min ?? 0) ? T.rose : T.border}`,
+                    background:'#13161e', color: overrides[ev.id] > 0 ? T.rose : T.textDim,
+                    cursor:'pointer', flexShrink:0 }}>
+                  {ALERT_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        ))}
       </div>
 
       <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end' }}>
@@ -670,7 +681,7 @@ function BatchAlertModal({ tripId, onDone, onClose }: {
           background: saving ? T.textDim+'44' : T.rose,
           color:'#fff', cursor: saving ? 'default' : 'pointer',
           fontSize:'13px', fontWeight:600 }}>
-          {saving ? '設定中...' : '一括設定'}
+          {saving ? '保存中...' : '保存'}
         </button>
       </div>
     </Modal>
@@ -877,14 +888,13 @@ export default function TripClient({ trip: initialTrip, session }: {
       )}
       {showBatchAlert && (
         <BatchAlertModal
-          tripId={trip.id}
-          onDone={(_updated, alertMin, scope) => {
+          trip={trip}
+          onDone={(overrides) => {
             setShowBatchAlert(false)
-            // ローカル state を更新
             updateDays((trip.days || []).map(d => ({
               ...d,
               events: (d.events || []).map(e =>
-                scope === 'unset' && e.alert_min !== 0 ? e : { ...e, alert_min: alertMin }
+                overrides[e.id] !== undefined ? { ...e, alert_min: overrides[e.id] } : e
               ),
             })))
           }}
