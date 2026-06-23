@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { addDay, addEvent, updateEvent, deleteEvent, deleteDay } from '@/lib/trips'
 import type { Trip, TripDay, Event } from '@/types'
