@@ -46,12 +46,15 @@ export default async function InvitePage({
   }
 
   const session = await getServerSession(authOptions)
+  console.log('[invite] session:', JSON.stringify(session))
 
   if (!session) {
+    console.log('[invite] no session → redirect to login')
     redirect(`/login?next=/invite/${token}`)
   }
 
   const userId = (session.user as any).id
+  console.log('[invite] userId:', userId)
 
   const { data: existing } = await supabase
     .from('trip_members')
@@ -61,11 +64,12 @@ export default async function InvitePage({
     .single()
 
   if (!existing) {
-    await supabase.from('trip_members').insert({
+    const { error: insertError } = await supabase.from('trip_members').insert({
       trip_id: invite.trip_id,
       user_id: userId,
       role: 'member',
     })
+    console.log('[invite] insert error:', JSON.stringify(insertError))
 
     await supabase
       .from('invite_tokens')
