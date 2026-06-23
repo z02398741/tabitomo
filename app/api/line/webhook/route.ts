@@ -151,13 +151,14 @@ function resolveEvent(events: EventSummary[], title: string): EventSummary | nul
   return events.find(e => e.title.toLowerCase().includes(t) || t.includes(e.title.toLowerCase())) ?? null
 }
 
-function resolveDay(trip: any, hint: 'today' | 'tomorrow' | undefined): string | null {
+function resolveDay(trip: any, hint: 'today' | 'tomorrow' | 'dayAfterTomorrow' | undefined): string | null {
   const today = new Date().toISOString().split('T')[0]
   if (!hint) {
     const day = trip.days?.find((d: any) => d.date === today) ?? trip.days?.[0]
     return day?.id ?? null
   }
-  const target = hint === 'today' ? today : new Date(Date.now() + 86400000).toISOString().split('T')[0]
+  const offset = hint === 'today' ? 0 : hint === 'tomorrow' ? 1 : 2
+  const target = new Date(Date.now() + offset * 86_400_000).toISOString().split('T')[0]
   const day = trip.days?.find((d: any) => d.date === target)
   return day?.id ?? null
 }
