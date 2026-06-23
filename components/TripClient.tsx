@@ -485,6 +485,8 @@ export default function TripClient({ trip: initialTrip, session }: {
   const [trip,        setTrip]        = useState(initialTrip)
   const [showDayForm, setShowDayForm] = useState(false)
   const [showExport,  setShowExport]  = useState(false)
+  const [inviteUrl,   setInviteUrl]   = useState<string | null>(null)
+  const [showInvite,  setShowInvite]  = useState(false)
 
   const updateDays = (days: any[]) => setTrip(t => ({ ...t, days }))
 
@@ -528,6 +530,13 @@ export default function TripClient({ trip: initialTrip, session }: {
     updateDays((trip.days || []).filter(d => d.id !== dayId))
   }
 
+  const handleInvite = async () => {
+    const res = await fetch(`/api/trips/${trip.id}/invite`, { method: 'POST' })
+    const { url } = await res.json()
+    setInviteUrl(url)
+    setShowInvite(true)
+  }
+
   return (
     <div style={{ minHeight:'100vh', background:T.bg, color:T.textPri,
       fontFamily:"'Inter','Noto Sans JP',sans-serif" }}>
@@ -553,12 +562,20 @@ export default function TripClient({ trip: initialTrip, session }: {
               {trip.budget  ? ` · ${trip.budget}`   : ''}
             </div>
           </div>
-          <button onClick={() => setShowExport(true)} style={{ display:'flex',
-            alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px',
-            border:`1px solid ${T.border}`, background:T.card, color:T.textSec,
-            cursor:'pointer', fontSize:'13px', fontWeight:600, flexShrink:0 }}>
-            {Ico.export} 出力
-          </button>
+          <div style={{ display:'flex', gap:'8px', flexShrink:0 }}>
+            <button onClick={handleInvite} style={{ display:'flex',
+              alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px',
+              border:`1px solid ${T.teal}44`, background:T.teal+'22',
+              color:T.teal, cursor:'pointer', fontSize:'13px', fontWeight:600 }}>
+              👥 招待
+            </button>
+            <button onClick={() => setShowExport(true)} style={{ display:'flex',
+              alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px',
+              border:`1px solid ${T.border}`, background:T.card, color:T.textSec,
+              cursor:'pointer', fontSize:'13px', fontWeight:600 }}>
+              {Ico.export} 出力
+            </button>
+          </div>
         </div>
 
         {trip.transport && (
@@ -619,6 +636,32 @@ export default function TripClient({ trip: initialTrip, session }: {
       )}
       {showExport && (
         <ExportModal trip={trip} onClose={() => setShowExport(false)}/>
+      )}
+      {showInvite && inviteUrl && (
+        <Modal onClose={() => setShowInvite(false)}>
+          <div style={{ display:'flex', justifyContent:'space-between',
+            alignItems:'center', marginBottom:'16px' }}>
+            <span style={{ fontSize:'16px', fontWeight:700, color:T.textPri }}>
+              メンバーを招待
+            </span>
+            <button onClick={() => setShowInvite(false)} style={{ background:'none',
+              border:'none', color:T.textDim, cursor:'pointer', fontSize:'20px' }}>×</button>
+          </div>
+          <div style={{ fontSize:'13px', color:T.textSec, marginBottom:'12px' }}>
+            以下のリンクをLINEグループに送ってください。7日間有効です。
+          </div>
+          <div style={{ background:'#13161e', border:`1px solid ${T.border}`,
+            borderRadius:'10px', padding:'12px', fontSize:'12px', color:T.accentLt,
+            wordBreak:'break-all', marginBottom:'14px' }}>
+            {inviteUrl}
+          </div>
+          <button onClick={() => navigator.clipboard.writeText(inviteUrl)}
+            style={{ width:'100%', padding:'11px', borderRadius:'10px',
+              border:'none', background:T.accent, color:'#fff',
+              cursor:'pointer', fontSize:'14px', fontWeight:600 }}>
+            リンクをコピー
+          </button>
+        </Modal>
       )}
     </div>
   )
