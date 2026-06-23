@@ -120,13 +120,17 @@ export async function POST(req: NextRequest) {
     if (event.type !== 'message' || event.message?.type !== 'text') continue
 
     const text: string = event.message.text
-    console.log('text:', text)
-    console.log('includes @Tabitomo:', text.includes('@Tabitomo'))
-
     const replyToken: string = event.replyToken
     const groupId: string = event.source?.groupId || ''
 
-    await handleCommand(text, groupId, replyToken)
+    const mentionees = event.message?.mention?.mentionees || []
+    const isMentionedByObj = mentionees.some((m: { isSelf?: boolean }) => m.isSelf === true)
+    const isMentionedByText = text.includes('@Tabi')
+
+    if (!isMentionedByObj && !isMentionedByText) continue
+
+    const command = text.replace(/@\S+\s*/g, '').trim()
+    await handleCommand(command, groupId, replyToken)
   }
 
   return NextResponse.json({ ok: true })
