@@ -1,20 +1,10 @@
 'use client'
-import { createClient } from '@/lib/supabase/client'
+import { signIn } from 'next-auth/react'
 
 export default function LoginButton() {
-  const handleLogin = async () => {
-    const supabase = createClient()
-    await supabase.auth.signInWithOAuth({
-      provider: 'custom:line',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      }
-    })
-  }
-
   return (
     <button
-      onClick={handleLogin}
+      onClick={() => signIn('line', { callbackUrl: '/' })}
       style={{
         display: 'flex',
         alignItems: 'center',
