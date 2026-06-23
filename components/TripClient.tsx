@@ -793,29 +793,29 @@ export default function TripClient({ trip: initialTrip, session }: {
               {trip.budget  ? ` · ${trip.budget}`   : ''}
             </div>
           </div>
-          <div style={{ display:'flex', gap:'8px', flexShrink:0 }}>
+          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', justifyContent:'flex-end' }}>
             <button onClick={handleInvite} style={{ display:'flex',
-              alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px',
+              alignItems:'center', gap:'4px', padding:'8px 12px', borderRadius:'10px',
               border:`1px solid ${T.teal}44`, background:T.teal+'22',
-              color:T.teal, cursor:'pointer', fontSize:'13px', fontWeight:600 }}>
+              color:T.teal, cursor:'pointer', fontSize:'12px', fontWeight:600 }}>
               👥 招待
             </button>
             <button onClick={() => setShowLineBind(true)} style={{ display:'flex',
-              alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px',
+              alignItems:'center', gap:'4px', padding:'8px 12px', borderRadius:'10px',
               border:`1px solid ${T.amber}44`, background:T.amber+'22',
-              color:T.amber, cursor:'pointer', fontSize:'13px', fontWeight:600 }}>
-              💬 LINE連携
+              color:T.amber, cursor:'pointer', fontSize:'12px', fontWeight:600 }}>
+              💬 LINE
             </button>
             <button onClick={() => setShowBatchAlert(true)} style={{ display:'flex',
-              alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px',
+              alignItems:'center', gap:'4px', padding:'8px 12px', borderRadius:'10px',
               border:`1px solid ${T.rose}44`, background:T.rose+'22',
-              color:T.rose, cursor:'pointer', fontSize:'13px', fontWeight:600 }}>
-              {Ico.bell} 一括通知
+              color:T.rose, cursor:'pointer', fontSize:'12px', fontWeight:600 }}>
+              {Ico.bell} 通知
             </button>
             <button onClick={() => setShowExport(true)} style={{ display:'flex',
-              alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px',
+              alignItems:'center', gap:'4px', padding:'8px 12px', borderRadius:'10px',
               border:`1px solid ${T.border}`, background:T.card, color:T.textSec,
-              cursor:'pointer', fontSize:'13px', fontWeight:600 }}>
+              cursor:'pointer', fontSize:'12px', fontWeight:600 }}>
               {Ico.export} 出力
             </button>
           </div>
