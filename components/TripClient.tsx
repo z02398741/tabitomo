@@ -94,12 +94,45 @@ function EventFormModal({ event, dayId, onSave, onClose }: {
   onSave: (ev: Event) => void
   onClose: () => void
 }) {
-  const [time,     setTime]     = useState(event?.time     || '09:00')
-  const [title,    setTitle]    = useState(event?.title    || '')
-  const [type,     setType]     = useState<Event['type']>(event?.type || 'activity')
-  const [note,     setNote]     = useState(event?.note     || '')
-  const [alertMin, setAlertMin] = useState(event?.alert_min ?? 30)
-  const [saving,   setSaving]   = useState(false)
+  const [time,      setTime]      = useState(event?.time     || '09:00')
+  const [title,     setTitle]     = useState(event?.title    || '')
+  const [type,      setType]      = useState<Event['type']>(event?.type || 'activity')
+  const [note,      setNote]      = useState(event?.note     || '')
+  const [alertMin,  setAlertMin]  = useState(event?.alert_min ?? 0)
+  const [saving,    setSaving]    = useState(false)
+  const [tickets,   setTickets]   = useState<any[]>([])
+  const [uploading, setUploading] = useState(false)
+
+  useEffect(() => {
+    if (event?.id) {
+      fetch(`/api/tickets?event_id=${event.id}`)
+        .then(r => r.json())
+        .then(setTickets)
+    }
+  }, [event?.id])
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !event?.id) return
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('event_id', event.id)
+      fd.append('name', file.name)
+      const res = await fetch('/api/tickets', { method: 'POST', body: fd })
+      const ticket = await res.json()
+      setTickets(p => [...p, ticket])
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const openTicket = async (ticketId: string) => {
+    const res = await fetch(`/api/tickets/${ticketId}/url`)
+    const { url } = await res.json()
+    window.open(url, '_blank')
+  }
 
   const save = async () => {
     if (!title.trim()) return
@@ -176,6 +209,37 @@ function EventFormModal({ event, dayId, onSave, onClose }: {
           ))}
         </div>
       </div>
+
+      {event?.id && (
+        <div style={{ marginBottom:'20px' }}>
+          <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+            color:T.textDim, letterSpacing:'.06em', marginBottom:'8px' }}>
+            🎫 チケット・票券
+          </label>
+          {tickets.map(t => (
+            <div key={t.id} onClick={() => openTicket(t.id)} style={{
+              display:'flex', alignItems:'center', gap:'8px',
+              padding:'8px 12px', borderRadius:'8px', marginBottom:'6px',
+              background:'#13161e', border:`1px solid ${T.border}`,
+              cursor:'pointer',
+            }}>
+              <span style={{ fontSize:'14px' }}>🎫</span>
+              <span style={{ fontSize:'13px', color:T.accentLt, flex:1 }}>{t.name}</span>
+              <span style={{ fontSize:'11px', color:T.textDim }}>開く →</span>
+            </div>
+          ))}
+          <label style={{
+            display:'flex', alignItems:'center', gap:'8px',
+            padding:'9px 14px', borderRadius:'8px',
+            border:`1.5px dashed ${T.border}`, cursor:'pointer',
+            color:T.textDim, fontSize:'13px',
+          }}>
+            <span>{uploading ? 'アップロード中...' : '+ PDF・画像を添付'}</span>
+            <input type="file" accept=".pdf,image/*" onChange={handleUpload}
+              style={{ display:'none' }} disabled={uploading}/>
+          </label>
+        </div>
+      )}
 
       <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end' }}>
         <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:'10px',
