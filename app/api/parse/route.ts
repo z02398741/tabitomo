@@ -79,11 +79,10 @@ export async function POST(req: Request) {
 
   try {
     let parsed: any
-    if (provider === 'claude') {
-      parsed = await parseClaude(text)
-    } else if (provider === 'gemini') {
+    if (provider === 'gemini') {
       parsed = await parseGemini(text)
     } else {
+      // claude is temporarily disabled; keyword parsing is handled client-side
       return NextResponse.json({ error: 'invalid provider' }, { status: 400 })
     }
     return NextResponse.json(parsed)

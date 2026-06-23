@@ -118,10 +118,9 @@ const DEMO = `【伊豆大島 3天2夜行程｜7/18–7/20】
 11:30 午餐（簡單）
 16:00 回程（大島→竹芝 高速船）`
 
-type Provider = 'claude' | 'gemini' | 'keyword'
+type Provider = 'gemini' | 'keyword'
 
 const PROVIDERS: { id: Provider; label: string; icon: string; color: string }[] = [
-  { id: 'claude',  label: 'Claude',   icon: '◆', color: '#c084fc' },
   { id: 'gemini',  label: 'Gemini',   icon: '✦', color: '#4ecdc4' },
   { id: 'keyword', label: 'キーワード', icon: '#', color: '#8b93b0' },
 ]
@@ -139,11 +138,12 @@ export default function ImportClient({ session }: { session: any }) {
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(null)
   const [log,      setLog]      = useState<string | null>(null)
-  const [provider, setProvider] = useState<Provider>('claude')
+  const [provider, setProvider] = useState<Provider>('gemini')
 
   useEffect(() => {
     const saved = localStorage.getItem(LS_KEY) as Provider | null
     if (saved && PROVIDERS.some(p => p.id === saved)) setProvider(saved)
+    else localStorage.removeItem(LS_KEY)
   }, [])
 
   const switchProvider = (p: Provider) => {
