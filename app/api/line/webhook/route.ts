@@ -77,6 +77,9 @@ async function handleCommand(text: string, groupId: string, replyToken: string) 
 
   console.log('trip:', trip?.title, 'error:', error)
 
+  await reply(replyToken, [{ type: 'text', text: `受信しました：${text}` }])
+  return
+
   if (!trip) {
     await reply(replyToken, [{
       type: 'text',
