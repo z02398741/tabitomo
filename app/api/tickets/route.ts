@@ -43,7 +43,12 @@ export async function POST(req: Request) {
   if (uploadError) {
     return NextResponse.json({ error: uploadError.message }, { status: 500 })
   }
-
+  console.log({
+    eventId,
+    name,
+    path,
+    userId
+  })
   const { data: ticket, error } = await supabase
     .from('tickets')
     .insert({ event_id: eventId, name, storage_path: path })
