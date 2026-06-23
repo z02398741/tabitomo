@@ -65,10 +65,8 @@ function formatTrip(trip: any): string {
   return lines.join('\n')
 }
 
-async function getTodayEventsMessages(trip: any): Promise<object[]> {
-  const today = new Date().toISOString().split('T')[0]
-  const day = trip.days?.find((d: any) => d.date === today)
-  if (!day || !day.events?.length) return [textMsg('今日の予定はありません')]
+async function getDayEventsMessages(day: any, fallback = 'この日の予定はありません'): Promise<object[]> {
+  if (!day || !sortedEvents(day.events ?? []).length) return [textMsg(fallback)]
 
   const lines = [`📅 ${day.label} の予定`]
   const ticketPaths: Array<{ name: string; path: string }> = []
@@ -95,6 +93,47 @@ async function getTodayEventsMessages(trip: any): Promise<object[]> {
   }
 
   return messages
+}
+
+function findDayByQuery(text: string, trip: any): any | null {
+  const days = sortedDays(trip.days ?? [])
+  const now = new Date()
+  const jstOffset = 9 * 60 * 60 * 1000
+  const toDate = (d: Date) => new Date(d.getTime() + jstOffset).toISOString().split('T')[0]
+
+  if (/明後日|後天|あさって/.test(text)) {
+    const target = toDate(new Date(now.getTime() + 2 * 86400000))
+    return days.find((d: any) => d.date === target) ?? null
+  }
+  if (/明日|明天|あした|あす/.test(text)) {
+    const target = toDate(new Date(now.getTime() + 86400000))
+    return days.find((d: any) => d.date === target) ?? null
+  }
+
+  // M/D or M月D日
+  const mdMatch = text.match(/(\d{1,2})[\/月](\d{1,2})日?/)
+  if (mdMatch) {
+    const mm = mdMatch[1].padStart(2, '0')
+    const dd = mdMatch[2].padStart(2, '0')
+    for (const year of [now.getFullYear(), now.getFullYear() + 1]) {
+      const found = days.find((d: any) => d.date === `${year}-${mm}-${dd}`)
+      if (found) return found
+    }
+    return null
+  }
+
+  // Day1 / Day2 / 第1天 / 1日目
+  const dayNumMatch = text.match(/(?:day|Day|第)\s*(\d+)(?:天|日)?|(\d+)\s*日目/i)
+  if (dayNumMatch) {
+    const idx = parseInt(dayNumMatch[1] ?? dayNumMatch[2]) - 1
+    return days[idx] ?? null
+  }
+
+  // label partial match (e.g. "7/19" already handled above, but "7月19" etc.)
+  const labelMatch = days.find((d: any) =>
+    d.label && text.includes(d.label.replace(/^.*?[｜|]/, '').trim().slice(0, 4))
+  )
+  return labelMatch ?? null
 }
 
 function flattenEvents(trip: any): EventSummary[] {
@@ -205,11 +244,25 @@ async function handleCommand(
 
   // Quick commands
   const lower = text.toLowerCase()
-  if (lower.includes('今日') || lower.includes('予定') || lower.includes('スケジュール') || lower.includes('今天')) {
-    const messages = await getTodayEventsMessages(trip)
+
+  // Specific day query (明日, 7/19, Day2, etc.) — check before generic 予定
+  const specificDay = findDayByQuery(text, trip)
+  if (specificDay) {
+    const messages = await getDayEventsMessages(specificDay, 'この日の予定はありません')
     await replyMessage(replyToken, messages)
     return
   }
+
+  // Today's schedule
+  if (lower.includes('今日') || lower.includes('予定') || lower.includes('スケジュール') || lower.includes('今天')) {
+    const today = new Date().toISOString().split('T')[0]
+    const todayDay = (trip.days ?? []).find((d: any) => d.date === today)
+    const messages = await getDayEventsMessages(todayDay, '今日の予定はありません')
+    await replyMessage(replyToken, messages)
+    return
+  }
+
+  // Full itinerary
   if (lower.includes('行程') || lower.includes('全部') || lower.includes('全体') || lower.includes('全程')) {
     await replyMessage(replyToken, [textMsg(formatTrip(trip))])
     return
@@ -231,6 +284,9 @@ async function handleCommand(
       `🤖 Tabitomo Bot\n\n` +
       `📖 查詢\n` +
       `• @Tabi 今天的行程\n` +
+      `• @Tabi 明日の予定\n` +
+      `• @Tabi 7/19の予定\n` +
+      `• @Tabi Day2\n` +
       `• @Tabi 全程行程\n\n` +
       `✏️ 修改時間\n` +
       `• @Tabi 咖啡廳改下午三點\n` +
@@ -270,6 +326,9 @@ async function handleCommand(
       `🤖 Tabitomo Bot\n\n` +
       `📖 查詢\n` +
       `• @Tabi 今天的行程\n` +
+      `• @Tabi 明日の予定\n` +
+      `• @Tabi 7/19の予定\n` +
+      `• @Tabi Day2\n` +
       `• @Tabi 全程行程\n\n` +
       `✏️ 修改時間\n` +
       `• @Tabi 咖啡廳改下午三點\n` +
