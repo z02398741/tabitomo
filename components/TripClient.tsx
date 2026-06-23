@@ -496,7 +496,7 @@ function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver,
   const [open,          setOpen]          = useState(true)
   const [showEventForm, setShowEventForm] = useState(false)
   const [editingEvent,  setEditingEvent]  = useState<Event | undefined>()
-  const events = day.events || []
+  const events = [...(day.events ?? [])].sort((a, b) => a.time.localeCompare(b.time))
 
   return (
     <>
@@ -694,7 +694,13 @@ export default function TripClient({ trip: initialTrip, session }: {
   session: any
 }) {
   const router = useRouter()
-  const [trip,        setTrip]        = useState(initialTrip)
+  const [trip,        setTrip]        = useState(() => ({
+    ...initialTrip,
+    days: (initialTrip.days ?? []).map(d => ({
+      ...d,
+      events: [...(d.events ?? [])].sort((a, b) => a.time.localeCompare(b.time)),
+    })),
+  }))
   const [showDayForm,  setShowDayForm]  = useState(false)
   const [showExport,   setShowExport]   = useState(false)
   const [inviteUrl,    setInviteUrl]    = useState<string | null>(null)
