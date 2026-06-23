@@ -135,3 +135,12 @@ export async function deleteTrip(id: string) {
 
   if (error) throw error
 }
+
+export async function reorderDays(ids: string[]) {
+  const supabase = getAdmin()
+  const updates = ids.map((id, i) => ({ id, position: i }))
+  const { error } = await supabase
+    .from('trip_days')
+    .upsert(updates, { onConflict: 'id' })
+  if (error) throw error
+}

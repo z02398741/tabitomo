@@ -25,6 +25,10 @@ async function apiDeleteDay(id: string) {
   const res = await fetch(`/api/days/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await res.text())
 }
+async function apiReorderDays(ids: string[]) {
+  const res = await fetch('/api/days/reorder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) })
+  if (!res.ok) throw new Error(await res.text())
+}
 import type { Trip, TripDay, Event } from '@/types'
 
 const T = {
@@ -81,6 +85,7 @@ const Ico = {
   copy:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
   check: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>,
   bell:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
+  grip:  <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>,
 }
 
 // ── Modal ──────────────────────────────────────────────────────
@@ -474,9 +479,15 @@ function EventRow({ ev, accent, isLast, onEdit, onDelete }: {
 }
 
 // ── Day Card ───────────────────────────────────────────────────
-function DayCard({ day, accent, onAddEvent, onEditEvent, onDeleteEvent, onDeleteDay }: {
+function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver, onDrop, onDragEnd, onAddEvent, onEditEvent, onDeleteEvent, onDeleteDay }: {
   day: TripDay & { events?: Event[] }
   accent: string
+  isDragging: boolean
+  isDragOver: boolean
+  onDragStart: () => void
+  onDragOver: (e: React.DragEvent) => void
+  onDrop: () => void
+  onDragEnd: () => void
   onAddEvent: (ev: Event) => void
   onEditEvent: (ev: Event) => void
   onDeleteEvent: (id: string) => void
@@ -489,11 +500,24 @@ function DayCard({ day, accent, onAddEvent, onEditEvent, onDeleteEvent, onDelete
 
   return (
     <>
-      <div style={{ background:T.card, border:`1px solid ${T.border}`,
-        borderRadius:'16px', marginBottom:'12px', overflow:'hidden' }}>
+      <div
+        draggable
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onDragEnd={onDragEnd}
+        style={{ background:T.card,
+          border:`1px solid ${isDragOver ? T.accent : T.border}`,
+          borderRadius:'16px', marginBottom:'12px', overflow:'hidden',
+          opacity: isDragging ? 0.4 : 1,
+          transition:'opacity .15s, border-color .15s' }}>
         <div style={{ display:'flex', alignItems:'center', gap:'12px',
           padding:'14px 18px',
           borderBottom: open ? `1px solid ${T.border}` : 'none' }}>
+          <span style={{ color:T.textDim, cursor:'grab', display:'flex',
+            alignItems:'center', flexShrink:0 }}>
+            {Ico.grip}
+          </span>
           <div onClick={() => setOpen(o=>!o)} style={{ display:'flex',
             alignItems:'center', gap:'12px', flex:1, cursor:'pointer' }}>
             <div style={{ width:'3px', height:'36px', borderRadius:'2px',
@@ -578,6 +602,8 @@ export default function TripClient({ trip: initialTrip, session }: {
   const [showExport,  setShowExport]  = useState(false)
   const [inviteUrl,   setInviteUrl]   = useState<string | null>(null)
   const [showInvite,  setShowInvite]  = useState(false)
+  const [dragIdx,     setDragIdx]     = useState<number | null>(null)
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
 
   const updateDays = (days: any[]) => setTrip(t => ({ ...t, days }))
 
@@ -619,6 +645,20 @@ export default function TripClient({ trip: initialTrip, session }: {
   const handleDeleteDay = async (dayId: string) => {
     await apiDeleteDay(dayId)
     updateDays((trip.days || []).filter(d => d.id !== dayId))
+  }
+
+  const handleDragStart = (idx: number) => setDragIdx(idx)
+  const handleDragEnd   = () => { setDragIdx(null); setDragOverIdx(null) }
+  const handleDragOver  = (e: React.DragEvent, idx: number) => { e.preventDefault(); setDragOverIdx(idx) }
+  const handleDrop      = async (idx: number) => {
+    if (dragIdx === null || dragIdx === idx) return
+    const newDays = [...(trip.days || [])]
+    const [moved] = newDays.splice(dragIdx, 1)
+    newDays.splice(idx, 0, moved)
+    setDragIdx(null)
+    setDragOverIdx(null)
+    updateDays(newDays)
+    await apiReorderDays(newDays.map(d => d.id))
   }
 
   const handleInvite = async () => {
@@ -695,6 +735,12 @@ export default function TripClient({ trip: initialTrip, session }: {
         {(trip.days || []).map((day, i) => (
           <DayCard key={day.id} day={day}
             accent={DAY_ACCENTS[i % DAY_ACCENTS.length]}
+            isDragging={dragIdx === i}
+            isDragOver={dragOverIdx === i && dragIdx !== i}
+            onDragStart={() => handleDragStart(i)}
+            onDragOver={e => handleDragOver(e, i)}
+            onDrop={() => handleDrop(i)}
+            onDragEnd={handleDragEnd}
             onAddEvent={ev => handleAddEvent(day.id, ev)}
             onEditEvent={ev => handleEditEvent(day.id, ev)}
             onDeleteEvent={id => handleDeleteEvent(day.id, id)}
