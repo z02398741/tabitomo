@@ -118,9 +118,10 @@ export async function POST(req: NextRequest) {
     const replyToken: string = event.replyToken
     const groupId: string = event.source?.groupId || event.source?.roomId || ''
 
-    if (!text.includes('@Tabitomo') && !text.includes('@tabitomo')) continue
+    // if (!text.includes('@Tabitomo') && !text.includes('@tabitomo')) continue
 
-    const command = text.replace(/@Tabitomo\s*/gi, '').trim()
+    // const command = text.replace(/@Tabitomo\s*/gi, '').trim()
+    const command = text.trim()
     await handleCommand(command, groupId, replyToken)
   }
 
