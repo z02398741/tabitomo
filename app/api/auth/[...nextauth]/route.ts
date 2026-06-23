@@ -8,6 +8,11 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.LINE_LOGIN_CHANNEL_SECRET!,
     })
   ],
+
+  session: {
+    strategy: 'jwt',
+  },
+
   callbacks: {
     async jwt({ token, profile }) {
       if (profile) {
@@ -15,6 +20,7 @@ export const authOptions: NextAuthOptions = {
       }
       return token
     },
+
     async session({ session, token }) {
       if (session.user) {
         (session.user as any).id = token.sub
@@ -22,6 +28,7 @@ export const authOptions: NextAuthOptions = {
       return session
     }
   },
+
   secret: process.env.NEXTAUTH_SECRET,
 }
 
