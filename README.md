@@ -22,6 +22,7 @@ Plan trips together, share itineraries via LINE, and let AI organize your schedu
 - **Push Notifications** — Event alerts delivered to LINE groups at configurable lead times
 - **Drag-and-Drop Reorder** — Reorder trip days with drag handles
 - **Export** — Copy full itinerary as plain text or LINE-formatted message
+- **Audit Log & Restore** — Every INSERT/UPDATE/DELETE is logged via PostgreSQL triggers; deleted events, days, members, and trips can be restored via API
 - **Animated Background** — Canvas-based aurora, particles, shooting stars, and airplane trails
 - **Responsive** — Mobile-first layout with auto-degraded animation on small screens
 - **Reduced Motion** — Respects `prefers-reduced-motion` system preference
@@ -106,12 +107,13 @@ graph TD
 ```
 trips              — Trip metadata (title, budget, transport)
 trip_days          — Days within a trip (ordered by position)
-trip_events        — Events per day (time, type, note, alert_min)
+events             — Events per day (time, type, note, alert_min)
 tickets            — File attachments per event
 trip_members       — User ↔ Trip association (owner / member, max 20)
 invite_tokens      — Shareable invite links (7-day expiry, multi-use)
 pending_actions    — LINE bot pending confirmations (10-min expiry)
 user_profiles      — Cached LINE display name & avatar
+audit_logs         — Full change history (INSERT/UPDATE/DELETE) for all tables
 ```
 
 ---
@@ -136,6 +138,8 @@ user_profiles      — Cached LINE display name & avatar
 | POST | `/api/line/webhook` | LINE bot webhook |
 | POST | `/api/parse` | AI text → itinerary JSON |
 | GET/POST | `/api/notify` | Cron-triggered push alerts |
+| GET | `/api/admin/audit` | Audit log list for a trip (owner only) |
+| POST | `/api/admin/audit/[id]/restore` | Restore a deleted / updated record |
 
 ---
 
@@ -231,7 +235,7 @@ create table trip_days (
   position integer not null default 0
 );
 
-create table trip_events (
+create table events (
   id uuid primary key default gen_random_uuid(),
   day_id uuid not null references trip_days(id) on delete cascade,
   time text not null,
@@ -244,7 +248,7 @@ create table trip_events (
 
 create table tickets (
   id uuid primary key default gen_random_uuid(),
-  event_id uuid not null references trip_events(id) on delete cascade,
+  event_id uuid not null references events(id) on delete cascade,
   name text not null,
   storage_path text
 );
@@ -281,6 +285,58 @@ create table user_profiles (
   image text,
   updated_at timestamptz not null default now()
 );
+
+-- Audit log (auto-populated by triggers)
+create table audit_logs (
+  id          bigserial    primary key,
+  table_name  text         not null,
+  operation   text         not null,
+  row_id      text,
+  trip_id     uuid,
+  old_data    jsonb,
+  new_data    jsonb,
+  created_at  timestamptz  not null default now()
+);
+create index on audit_logs(trip_id);
+create index on audit_logs(created_at desc);
+
+create or replace function log_changes()
+returns trigger language plpgsql security definer as $$
+declare
+  _row_id text; _trip_id uuid; _data jsonb;
+begin
+  _data := case when tg_op = 'DELETE' then row_to_json(OLD)::jsonb else row_to_json(NEW)::jsonb end;
+  case tg_table_name
+    when 'trip_members'  then _row_id := null;
+    when 'invite_tokens' then _row_id := _data->>'token';
+    else                      _row_id := _data->>'id';
+  end case;
+  case tg_table_name
+    when 'trips'         then _trip_id := (_data->>'id')::uuid;
+    when 'trip_days'     then _trip_id := (_data->>'trip_id')::uuid;
+    when 'events'        then select trip_id into _trip_id from trip_days where id = (_data->>'day_id')::uuid;
+    when 'trip_members'  then _trip_id := (_data->>'trip_id')::uuid;
+    when 'invite_tokens' then _trip_id := (_data->>'trip_id')::uuid;
+    else _trip_id := null;
+  end case;
+  if tg_op = 'DELETE' then
+    insert into audit_logs(table_name,operation,row_id,trip_id,old_data)
+    values(tg_table_name,tg_op,_row_id,_trip_id,row_to_json(OLD)::jsonb); return OLD;
+  elsif tg_op = 'UPDATE' then
+    insert into audit_logs(table_name,operation,row_id,trip_id,old_data,new_data)
+    values(tg_table_name,tg_op,_row_id,_trip_id,row_to_json(OLD)::jsonb,row_to_json(NEW)::jsonb); return NEW;
+  else
+    insert into audit_logs(table_name,operation,row_id,trip_id,new_data)
+    values(tg_table_name,tg_op,_row_id,_trip_id,row_to_json(NEW)::jsonb); return NEW;
+  end if;
+end;
+$$;
+
+create trigger trips_audit         after insert or update or delete on trips         for each row execute function log_changes();
+create trigger trip_days_audit     after insert or update or delete on trip_days     for each row execute function log_changes();
+create trigger events_audit        after insert or update or delete on events        for each row execute function log_changes();
+create trigger trip_members_audit  after insert or update or delete on trip_members  for each row execute function log_changes();
+create trigger invite_tokens_audit after insert or update or delete on invite_tokens for each row execute function log_changes();
 ```
 
 ---
@@ -296,6 +352,7 @@ tabitomo/
 │   │   ├── days/                 # Day CRUD + reorder
 │   │   ├── events/               # Event CRUD
 │   │   ├── tickets/              # File upload + signed URL
+│   │   ├── admin/audit/          # Audit log list + restore endpoint
 │   │   ├── line/webhook/         # LINE bot webhook
 │   │   ├── notify/               # Cron push notifications
 │   │   └── parse/                # AI itinerary parser
