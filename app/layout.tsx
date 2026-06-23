@@ -27,7 +27,19 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <footer style={{
+          textAlign: 'center',
+          padding: '16px',
+          fontSize: '12px',
+          color: '#555e7a',
+          letterSpacing: '0.04em',
+          fontFamily: 'Inter, sans-serif',
+        }}>
+          © 2026 TABITOMO. Built by Yuki.
+        </footer>
+      </body>
     </html>
   );
 }
