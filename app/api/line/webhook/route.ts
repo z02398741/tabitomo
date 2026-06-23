@@ -24,6 +24,21 @@ function verifySignature(body: string, signature: string): boolean {
   return hash === signature
 }
 
+const EVENT_ICON: Record<string, string> = {
+  transport: '🚢', gather: '📍', activity: '🤿',
+  meal: '🍽', stay: '🏨', free: '🌊',
+}
+
+async function getSignedUrl(storagePath: string): Promise<string | null> {
+  const supabase = getAdmin()
+  const { data } = await supabase.storage.from('tickets').createSignedUrl(storagePath, 3600)
+  return data?.signedUrl ?? null
+}
+
+function isImagePath(path: string): boolean {
+  return /\.(jpg|jpeg|png|gif|webp)$/i.test(path)
+}
+
 function formatTrip(trip: any): string {
   const lines: string[] = [`📍 ${trip.title}`]
   if (trip.transport) lines.push(`🚢 ${trip.transport}`)
@@ -31,31 +46,44 @@ function formatTrip(trip: any): string {
   for (const day of trip.days || []) {
     lines.push(`▶ ${day.label}`)
     for (const ev of day.events || []) {
-      const icon: Record<string, string> = {
-        transport: '🚢', gather: '📍', activity: '🤿',
-        meal: '🍽', stay: '🏨', free: '🌊',
-      }
-      lines.push(`${icon[ev.type] || '•'} ${ev.time} ${ev.title}`)
+      const hasTicket = (ev.tickets?.length ?? 0) > 0
+      lines.push(`${EVENT_ICON[ev.type] || '•'} ${ev.time} ${ev.title}${hasTicket ? ' 📎' : ''}`)
     }
     lines.push('')
   }
   return lines.join('\n')
 }
 
-function getTodayEvents(trip: any): string {
+async function getTodayEventsMessages(trip: any): Promise<object[]> {
   const today = new Date().toISOString().split('T')[0]
   const day = trip.days?.find((d: any) => d.date === today)
-  if (!day || !day.events?.length) return '今日の予定はありません'
+  if (!day || !day.events?.length) return [textMsg('今日の予定はありません')]
+
   const lines = [`📅 ${day.label} の予定`]
+  const ticketPaths: Array<{ name: string; path: string }> = []
+
   for (const ev of day.events) {
-    const icon: Record<string, string> = {
-      transport: '🚢', gather: '📍', activity: '🤿',
-      meal: '🍽', stay: '🏨', free: '🌊',
-    }
-    lines.push(`${icon[ev.type] || '•'} ${ev.time} ${ev.title}`)
+    lines.push(`${EVENT_ICON[ev.type] || '•'} ${ev.time} ${ev.title}`)
     if (ev.note) lines.push(`   📝 ${ev.note}`)
+    for (const t of ev.tickets ?? []) {
+      if (t.storage_path) ticketPaths.push({ name: t.name || ev.title, path: t.storage_path })
+    }
   }
-  return lines.join('\n')
+
+  const messages: object[] = [textMsg(lines.join('\n'))]
+
+  // LINE reply limit: 5 messages. 1 used for text, so max 4 files.
+  for (const ticket of ticketPaths.slice(0, 4)) {
+    const url = await getSignedUrl(ticket.path)
+    if (!url) continue
+    if (isImagePath(ticket.path)) {
+      messages.push({ type: 'image', originalContentUrl: url, previewImageUrl: url })
+    } else {
+      messages.push(textMsg(`📎 ${ticket.name}\n${url}`))
+    }
+  }
+
+  return messages
 }
 
 function flattenEvents(trip: any): EventSummary[] {
@@ -110,10 +138,10 @@ async function handleCommand(
     return
   }
 
-  // Fetch trip linked to this group
+  // Fetch trip linked to this group (including tickets nested under events)
   const { data: trip } = await supabase
     .from('trips')
-    .select('*, days:trip_days(*, events(*))')
+    .select('*, days:trip_days(*, events(*, tickets(*)))')
     .eq('line_group_id', groupId)
     .single()
 
@@ -167,7 +195,8 @@ async function handleCommand(
   // Quick commands
   const lower = text.toLowerCase()
   if (lower.includes('今日') || lower.includes('予定') || lower.includes('スケジュール') || lower.includes('今天')) {
-    await replyMessage(replyToken, [textMsg(getTodayEvents(trip))])
+    const messages = await getTodayEventsMessages(trip)
+    await replyMessage(replyToken, messages)
     return
   }
   if (lower.includes('行程') || lower.includes('全部') || lower.includes('全体') || lower.includes('全程')) {
