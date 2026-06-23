@@ -111,6 +111,7 @@ export async function POST(req: NextRequest) {
   const data = JSON.parse(body)
 
   for (const event of data.events || []) {
+    console.log('event:', JSON.stringify(event, null, 2))
     if (event.type !== 'message' || event.message?.type !== 'text') continue
 
     const text: string = event.message.text
