@@ -788,8 +788,9 @@ export default function TripClient({ trip: initialTrip, session }: {
           {Ico.back} 戻る
         </button>
 
-        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
-          <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+          {/* Title row */}
+          <div>
             <div style={{ marginBottom:'6px' }}><TabitomoLogo /></div>
             <h1 style={{ fontSize:'22px', fontWeight:700, color:T.textPri,
               margin:'0 0 6px', lineHeight:1.3 }}>{trip.title}</h1>
@@ -799,7 +800,8 @@ export default function TripClient({ trip: initialTrip, session }: {
               {trip.budget  ? ` · ${trip.budget}`   : ''}
             </div>
           </div>
-          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', justifyContent:'flex-end' }}>
+          {/* Action buttons row */}
+          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
             <button onClick={handleInvite} style={{ display:'flex',
               alignItems:'center', gap:'4px', padding:'8px 12px', borderRadius:'10px',
               border:`1px solid ${T.teal}44`, background:T.teal+'22',
