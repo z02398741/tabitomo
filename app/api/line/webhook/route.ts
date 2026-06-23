@@ -71,6 +71,25 @@ function getTodayEvents(trip: any): string {
 async function handleCommand(text: string, groupId: string, replyToken: string) {
   const supabase = getAdmin()
 
+  // 連携コマンド: 連携 <trip_id>
+  const bindMatch = text.match(/連携\s+([a-f0-9-]{36})/i)
+  if (bindMatch) {
+    const tripId = bindMatch[1]
+    const { data: trip, error } = await supabase
+      .from('trips')
+      .update({ line_group_id: groupId })
+      .eq('id', tripId)
+      .select('title')
+      .single()
+
+    if (error || !trip) {
+      await reply(replyToken, [{ type: 'text', text: '⚠️ 行程が見つかりませんでした。IDを確認してください。' }])
+    } else {
+      await reply(replyToken, [{ type: 'text', text: `✅ 「${trip.title}」とこのグループを連携しました！\n予定通知がここに届くようになります。` }])
+    }
+    return
+  }
+
   const { data: trip } = await supabase
     .from('trips')
     .select(`*, days:trip_days(*, events(*))`)

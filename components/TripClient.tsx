@@ -598,10 +598,12 @@ export default function TripClient({ trip: initialTrip, session }: {
 }) {
   const router = useRouter()
   const [trip,        setTrip]        = useState(initialTrip)
-  const [showDayForm, setShowDayForm] = useState(false)
-  const [showExport,  setShowExport]  = useState(false)
-  const [inviteUrl,   setInviteUrl]   = useState<string | null>(null)
-  const [showInvite,  setShowInvite]  = useState(false)
+  const [showDayForm,  setShowDayForm]  = useState(false)
+  const [showExport,   setShowExport]   = useState(false)
+  const [inviteUrl,    setInviteUrl]    = useState<string | null>(null)
+  const [showInvite,   setShowInvite]   = useState(false)
+  const [showLineBind, setShowLineBind] = useState(false)
+  const [lineCopied,   setLineCopied]   = useState(false)
   const [dragIdx,     setDragIdx]     = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
 
@@ -700,6 +702,12 @@ export default function TripClient({ trip: initialTrip, session }: {
               color:T.teal, cursor:'pointer', fontSize:'13px', fontWeight:600 }}>
               👥 招待
             </button>
+            <button onClick={() => setShowLineBind(true)} style={{ display:'flex',
+              alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px',
+              border:`1px solid ${T.amber}44`, background:T.amber+'22',
+              color:T.amber, cursor:'pointer', fontSize:'13px', fontWeight:600 }}>
+              💬 LINE連携
+            </button>
             <button onClick={() => setShowExport(true)} style={{ display:'flex',
               alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px',
               border:`1px solid ${T.border}`, background:T.card, color:T.textSec,
@@ -773,6 +781,45 @@ export default function TripClient({ trip: initialTrip, session }: {
       )}
       {showExport && (
         <ExportModal trip={trip} onClose={() => setShowExport(false)}/>
+      )}
+      {showLineBind && (
+        <Modal onClose={() => { setShowLineBind(false); setLineCopied(false) }}>
+          <div style={{ display:'flex', justifyContent:'space-between',
+            alignItems:'center', marginBottom:'16px' }}>
+            <span style={{ fontSize:'16px', fontWeight:700, color:T.textPri }}>
+              💬 LINEグループと連携
+            </span>
+            <button onClick={() => setShowLineBind(false)} style={{ background:'none',
+              border:'none', color:T.textDim, cursor:'pointer', fontSize:'20px' }}>×</button>
+          </div>
+          <div style={{ fontSize:'13px', color:T.textSec, marginBottom:'16px', lineHeight:1.6 }}>
+            BOT をグループに追加後、以下のメッセージをグループに送信してください。
+          </div>
+          <div style={{ background:'#13161e', border:`1px solid ${T.amber}44`,
+            borderRadius:'10px', padding:'14px', fontSize:'13px', color:T.amber,
+            wordBreak:'break-all', marginBottom:'14px', fontFamily:'monospace' }}>
+            @Tabi 連携 {trip.id}
+          </div>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(`@Tabi 連携 ${trip.id}`)
+              setLineCopied(true)
+              setTimeout(() => setLineCopied(false), 2000)
+            }}
+            style={{ width:'100%', padding:'11px', borderRadius:'10px',
+              border:'none', background: lineCopied ? '#4caf8f' : T.amber,
+              color:'#fff', cursor:'pointer', fontSize:'14px', fontWeight:600,
+              display:'flex', alignItems:'center', justifyContent:'center', gap:'6px' }}>
+            {lineCopied ? <>{Ico.check} コピー済み</> : <>{Ico.copy} コマンドをコピー</>}
+          </button>
+          {trip.line_group_id && (
+            <div style={{ marginTop:'12px', padding:'10px 12px', borderRadius:'8px',
+              background: T.green+'15', border:`1px solid ${T.green}44`,
+              fontSize:'12px', color:T.green, textAlign:'center' }}>
+              ✅ 連携済み
+            </div>
+          )}
+        </Modal>
       )}
       {showInvite && inviteUrl && (
         <Modal onClose={() => setShowInvite(false)}>
