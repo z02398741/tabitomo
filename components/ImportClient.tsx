@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { signOut } from 'next-auth/react'
 import TabitomoLogo from '@/components/logo/TabitomoLogo'
 
 const T = {
@@ -129,6 +130,7 @@ const PROVIDERS: { id: Provider; label: string; icon: string; color: string }[] 
 const Ico = {
   back:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>,
   spark: <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z"/></svg>,
+  out:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
 }
 
 const LS_KEY = 'tabitomo_ai_provider'
@@ -206,12 +208,19 @@ export default function ImportClient({ session }: { session: any }) {
       fontFamily:"'Inter','Noto Sans JP',sans-serif" }}>
 
       <div style={{ padding:'20px 20px 0' }}>
-        <button onClick={() => router.push('/')} style={{ display:'flex',
-          alignItems:'center', gap:'6px', background:'none', border:'none',
-          color:T.textSec, cursor:'pointer', fontSize:'13px', padding:0,
-          marginBottom:'20px' }}>
-          {Ico.back} 戻る
-        </button>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
+          <button onClick={() => router.push('/')} style={{ display:'flex',
+            alignItems:'center', gap:'6px', background:'none', border:'none',
+            color:T.textSec, cursor:'pointer', fontSize:'13px', padding:0 }}>
+            {Ico.back} 戻る
+          </button>
+          <button onClick={() => signOut({ callbackUrl: '/login' })} style={{ display:'flex',
+            alignItems:'center', gap:'6px', padding:'8px 14px', borderRadius:'10px',
+            border:`1px solid ${T.border}`, background:'none',
+            color:T.textSec, cursor:'pointer', fontSize:'12px' }}>
+            {Ico.out} ログアウト
+          </button>
+        </div>
         <div style={{ marginBottom:'6px' }}><TabitomoLogo /></div>
         <h1 style={{ fontSize:'22px', fontWeight:700, color:T.textPri,
           margin:'0 0 4px' }}>行程テキストを貼り付ける</h1>
