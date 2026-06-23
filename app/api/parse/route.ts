@@ -40,6 +40,9 @@ Rules:
 - date: use YYYY-MM-DD format with year 2026 if not specified
 - Every day must have at least 5 events with realistic HH:MM times
 - Lines starting with ※ or → are notes for the previous event
+- type MUST be exactly one of: transport, gather, meal, activity, stay, free — never use any other value
+- Maximum 14 days per itinerary
+- If the input is not travel-related, return {"title":"","members":null,"budget":null,"transport":null,"days":[]}
 - Return ONLY the JSON object, nothing else`
 
 const USER_PROMPT = (text: string) =>
