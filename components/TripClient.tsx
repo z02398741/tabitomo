@@ -591,6 +591,92 @@ function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver,
   )
 }
 
+// ── Batch Alert Modal ─────────────────────────────────────────
+function BatchAlertModal({ tripId, onDone, onClose }: {
+  tripId: string
+  onDone: (updated: number, alertMin: number, scope: string) => void
+  onClose: () => void
+}) {
+  const [alertMin, setAlertMin] = useState(30)
+  const [scope,    setScope]    = useState<'all' | 'unset'>('unset')
+  const [saving,   setSaving]   = useState(false)
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/trips/${tripId}/alert`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alert_min: alertMin, scope }),
+      })
+      const { updated } = await res.json()
+      onDone(updated, alertMin, scope)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display:'flex', justifyContent:'space-between',
+        alignItems:'center', marginBottom:'20px' }}>
+        <span style={{ fontSize:'16px', fontWeight:700, color:T.textPri }}>
+          {Ico.bell} 通知タイミングを一括設定
+        </span>
+        <button onClick={onClose} style={{ background:'none', border:'none',
+          color:T.textDim, cursor:'pointer', fontSize:'20px' }}>×</button>
+      </div>
+
+      <div style={{ marginBottom:'16px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'8px' }}>通知タイミング</label>
+        <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+          {ALERT_OPTIONS.filter(o => o.value > 0).map(o => (
+            <button key={o.value} onClick={() => setAlertMin(o.value)} style={{
+              padding:'7px 14px', borderRadius:'20px',
+              border:`1px solid ${alertMin === o.value ? T.rose : T.border}`,
+              background: alertMin === o.value ? T.rose+'22' : 'none',
+              color: alertMin === o.value ? T.rose : T.textSec,
+              cursor:'pointer', fontSize:'12px', fontWeight:600 }}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginBottom:'24px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'8px' }}>対象</label>
+        <div style={{ display:'flex', gap:'6px' }}>
+          {([['unset','通知なしのイベントのみ'],['all','すべてのイベント']] as const).map(([v, l]) => (
+            <button key={v} onClick={() => setScope(v)} style={{
+              padding:'7px 14px', borderRadius:'20px',
+              border:`1px solid ${scope === v ? T.accent : T.border}`,
+              background: scope === v ? T.accentDim : 'none',
+              color: scope === v ? T.accentLt : T.textSec,
+              cursor:'pointer', fontSize:'12px', fontWeight:600 }}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end' }}>
+        <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:'10px',
+          border:`1px solid ${T.border}`, background:'none', cursor:'pointer',
+          fontSize:'13px', color:T.textSec }}>キャンセル</button>
+        <button onClick={save} disabled={saving} style={{
+          padding:'9px 20px', borderRadius:'10px', border:'none',
+          background: saving ? T.textDim+'44' : T.rose,
+          color:'#fff', cursor: saving ? 'default' : 'pointer',
+          fontSize:'13px', fontWeight:600 }}>
+          {saving ? '設定中...' : '一括設定'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Trip Client ────────────────────────────────────────────────
 export default function TripClient({ trip: initialTrip, session }: {
   trip: Trip
@@ -602,8 +688,9 @@ export default function TripClient({ trip: initialTrip, session }: {
   const [showExport,   setShowExport]   = useState(false)
   const [inviteUrl,    setInviteUrl]    = useState<string | null>(null)
   const [showInvite,   setShowInvite]   = useState(false)
-  const [showLineBind, setShowLineBind] = useState(false)
-  const [lineCopied,   setLineCopied]   = useState(false)
+  const [showLineBind,  setShowLineBind]  = useState(false)
+  const [lineCopied,    setLineCopied]    = useState(false)
+  const [showBatchAlert, setShowBatchAlert] = useState(false)
   const [dragIdx,     setDragIdx]     = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
 
@@ -708,6 +795,12 @@ export default function TripClient({ trip: initialTrip, session }: {
               color:T.amber, cursor:'pointer', fontSize:'13px', fontWeight:600 }}>
               💬 LINE連携
             </button>
+            <button onClick={() => setShowBatchAlert(true)} style={{ display:'flex',
+              alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px',
+              border:`1px solid ${T.rose}44`, background:T.rose+'22',
+              color:T.rose, cursor:'pointer', fontSize:'13px', fontWeight:600 }}>
+              {Ico.bell} 一括通知
+            </button>
             <button onClick={() => setShowExport(true)} style={{ display:'flex',
               alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px',
               border:`1px solid ${T.border}`, background:T.card, color:T.textSec,
@@ -781,6 +874,22 @@ export default function TripClient({ trip: initialTrip, session }: {
       )}
       {showExport && (
         <ExportModal trip={trip} onClose={() => setShowExport(false)}/>
+      )}
+      {showBatchAlert && (
+        <BatchAlertModal
+          tripId={trip.id}
+          onDone={(_updated, alertMin, scope) => {
+            setShowBatchAlert(false)
+            // ローカル state を更新
+            updateDays((trip.days || []).map(d => ({
+              ...d,
+              events: (d.events || []).map(e =>
+                scope === 'unset' && e.alert_min !== 0 ? e : { ...e, alert_min: alertMin }
+              ),
+            })))
+          }}
+          onClose={() => setShowBatchAlert(false)}
+        />
       )}
       {showLineBind && (
         <Modal onClose={() => { setShowLineBind(false); setLineCopied(false) }}>
