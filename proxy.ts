@@ -6,6 +6,7 @@ export async function proxy(request: NextRequest) {
   // 認証不要のパスはスキップ
   if (
     pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/line') ||
     pathname.startsWith('/auth') ||
     pathname.startsWith('/login') ||
     pathname.startsWith('/invite') ||
