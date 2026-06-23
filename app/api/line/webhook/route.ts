@@ -111,30 +111,28 @@ async function handleCommand(text: string, groupId: string, replyToken: string) 
 
 export async function POST(req: NextRequest) {
   const body = await req.text()
-  const signature = req.headers.get('x-line-signature') || ''
+  console.log('POST received')
 
+  const signature = req.headers.get('x-line-signature') || ''
   if (!verifySignature(body, signature)) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
   }
 
   const data = JSON.parse(body)
+  console.log('events count:', data.events?.length)
 
   for (const event of data.events || []) {
-    console.log('event:', JSON.stringify(event, null, 2))
+    console.log('event type:', event.type)
     if (event.type !== 'message' || event.message?.type !== 'text') continue
 
     const text: string = event.message.text
+    console.log('text:', text)
+    console.log('includes @Tabitomo:', text.includes('@Tabitomo'))
+
     const replyToken: string = event.replyToken
-    const groupId: string = event.source?.groupId || event.source?.roomId || ''
+    const groupId: string = event.source?.groupId || ''
 
-    const mentionees = event.message?.mention?.mentionees || []
-    const isMentionedByObj = mentionees.some((m: any) => m.isSelf === true)
-    const isMentionedByText = text.includes('@Tabitomo')
-
-    if (!isMentionedByObj && !isMentionedByText) continue
-
-    const command = text.replace(/@\S+\s*/g, '').trim()
-    await handleCommand(command, groupId, replyToken)
+    await handleCommand(text, groupId, replyToken)
   }
 
   return NextResponse.json({ ok: true })
