@@ -73,6 +73,7 @@ export default function TechBackground({
     let h = 0
 
     function resize() {
+      if (!canvas || !ctx) return
       w = window.innerWidth
       h = window.innerHeight
       canvas.width  = w * dpr
