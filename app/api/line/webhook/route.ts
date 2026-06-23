@@ -67,12 +67,15 @@ function getTodayEvents(trip: any): string {
 
 async function handleCommand(text: string, groupId: string, replyToken: string) {
   const supabase = getAdmin()
+  console.log('handleCommand groupId:', groupId)
 
-  const { data: trip } = await supabase
+  const { data: trip, error } = await supabase
     .from('trips')
     .select(`*, days:trip_days(*, events(*))`)
     .eq('line_group_id', groupId)
     .single()
+
+  console.log('trip:', trip?.title, 'error:', error)
 
   if (!trip) {
     await reply(replyToken, [{
