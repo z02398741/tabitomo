@@ -21,10 +21,28 @@ export async function POST(
   }
 
   const { id: tripId } = await params
+  const supabase = getAdmin()
+
+  // 既存の有効なトークンがあれば再利用
+  const { data: existing } = await supabase
+    .from('invite_tokens')
+    .select('token')
+    .eq('trip_id', tripId)
+    .eq('used', false)
+    .gt('expires_at', new Date().toISOString())
+    .order('expires_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  if (existing) {
+    const url = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${existing.token}`
+    return NextResponse.json({ url })
+  }
+
+  // 有効なトークンがなければ新規作成
   const token = crypto.randomBytes(16).toString('hex')
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
 
-  const supabase = getAdmin()
   await supabase.from('invite_tokens').insert({
     token,
     trip_id: tripId,
