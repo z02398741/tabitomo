@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 const T = {
@@ -118,24 +118,62 @@ const DEMO = `【伊豆大島 3天2夜行程｜7/18–7/20】
 11:30 午餐（簡單）
 16:00 回程（大島→竹芝 高速船）`
 
+type Provider = 'claude' | 'gemini' | 'keyword'
+
+const PROVIDERS: { id: Provider; label: string; icon: string; color: string }[] = [
+  { id: 'claude',  label: 'Claude',   icon: '◆', color: '#c084fc' },
+  { id: 'gemini',  label: 'Gemini',   icon: '✦', color: '#4ecdc4' },
+  { id: 'keyword', label: 'キーワード', icon: '#', color: '#8b93b0' },
+]
+
 const Ico = {
   back:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>,
   spark: <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z"/></svg>,
 }
 
+const LS_KEY = 'tabitomo_ai_provider'
+
 export default function ImportClient({ session }: { session: any }) {
   const router = useRouter()
-  const [text,    setText]    = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error,   setError]   = useState<string | null>(null)
-  const [log,     setLog]     = useState<string | null>(null)
+  const [text,     setText]     = useState('')
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState<string | null>(null)
+  const [log,      setLog]      = useState<string | null>(null)
+  const [provider, setProvider] = useState<Provider>('claude')
+
+  useEffect(() => {
+    const saved = localStorage.getItem(LS_KEY) as Provider | null
+    if (saved && PROVIDERS.some(p => p.id === saved)) setProvider(saved)
+  }, [])
+
+  const switchProvider = (p: Provider) => {
+    setProvider(p)
+    localStorage.setItem(LS_KEY, p)
+  }
 
   const handle = async () => {
     if (!text.trim()) return
     setLoading(true); setError(null); setLog(null)
     try {
-      const parsed = parseItinerary(text)
-      setLog(`解析完了 — ${parsed.days.length}日・${parsed.days.reduce((a:number,d:any)=>a+d.events.length,0)}件`)
+      let parsed: any
+      if (provider === 'keyword') {
+        parsed = parseItinerary(text)
+        setLog(`解析完了 — ${parsed.days.length}日・${parsed.days.reduce((a:number,d:any)=>a+d.events.length,0)}件`)
+      } else {
+        setLog('AI解析中...')
+        const res = await fetch('/api/parse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, provider }),
+        })
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.error || 'AI解析失敗')
+        }
+        parsed = await res.json()
+        const totalEvents = (parsed.days || []).reduce((a: number, d: any) => a + (d.events?.length || 0), 0)
+        setLog(`AI解析完了 — ${(parsed.days || []).length}日・${totalEvents}件`)
+      }
 
       const res = await fetch('/api/trips/import', {
         method: 'POST',
@@ -146,6 +184,7 @@ export default function ImportClient({ session }: { session: any }) {
       router.push(`/trips/${trip.id}`)
     } catch(e: any) {
       setError(e.message)
+      setLog(null)
     } finally {
       setLoading(false)
     }
@@ -158,6 +197,8 @@ export default function ImportClient({ session }: { session: any }) {
     fontFamily:'inherit', resize:'vertical',
     boxSizing:'border-box', outline:'none',
   }
+
+  const activeProv = PROVIDERS.find(p => p.id === provider)!
 
   return (
     <div style={{ minHeight:'100vh', background:T.bg, color:T.textPri,
@@ -174,9 +215,29 @@ export default function ImportClient({ session }: { session: any }) {
           letterSpacing:'.15em', marginBottom:'6px' }}>AI IMPORT</div>
         <h1 style={{ fontSize:'22px', fontWeight:700, color:T.textPri,
           margin:'0 0 4px' }}>行程テキストを貼り付ける</h1>
-        <p style={{ fontSize:'13px', color:T.textSec, margin:'0 0 24px' }}>
+        <p style={{ fontSize:'13px', color:T.textSec, margin:'0 0 16px' }}>
           どんな形式でも自動解析
         </p>
+
+        <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'20px', flexWrap:'wrap' }}>
+          <span style={{ fontSize:'11px', color:T.textDim, marginRight:'2px' }}>解析エンジン</span>
+          {PROVIDERS.map(p => {
+            const active = provider === p.id
+            return (
+              <button key={p.id} onClick={() => switchProvider(p.id)} style={{
+                padding:'5px 12px', borderRadius:'20px', fontSize:'12px', fontWeight:600,
+                border: active ? `1.5px solid ${p.color}` : `1px solid ${T.border}`,
+                background: active ? `${p.color}22` : 'transparent',
+                color: active ? p.color : T.textSec,
+                cursor:'pointer', transition:'all .15s',
+                display:'flex', alignItems:'center', gap:'5px',
+              }}>
+                <span style={{ fontSize:'10px' }}>{p.icon}</span>
+                {p.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       <div style={{ padding:'0 20px 40px', maxWidth:'600px', margin:'0 auto' }}>
@@ -204,16 +265,25 @@ export default function ImportClient({ session }: { session: any }) {
           display:'flex', alignItems:'center', justifyContent:'center', gap:'8px',
           width:'100%', marginTop:'14px', padding:'14px', borderRadius:'12px',
           border:'none',
-          background: text.trim()&&!loading ? T.accent : T.textDim+'44',
+          background: text.trim()&&!loading
+            ? activeProv.color
+            : T.textDim+'44',
           color:'#fff', cursor:text.trim()&&!loading?'pointer':'default',
           fontSize:'15px', fontWeight:700, transition:'background .2s' }}>
           {loading
             ? <><span style={{ display:'inline-block', width:'16px', height:'16px',
                 border:'2px solid rgba(255,255,255,.3)', borderTopColor:'#fff',
                 borderRadius:'50%', animation:'spin 1s linear infinite' }}/> 解析中...</>
-            : <>{Ico.spark} 行程に変換</>
+            : <>{Ico.spark} {provider === 'keyword' ? '行程に変換' : `${activeProv.label}で変換`}</>
           }
         </button>
+
+        {provider !== 'keyword' && (
+          <div style={{ marginTop:'8px', fontSize:'11px', color:T.textDim, textAlign:'center' }}>
+            {provider === 'claude' ? 'Claude Opus 4.8（高精度・思考モード）' : 'Gemini 2.0 Flash（高速）'}
+            で解析します
+          </div>
+        )}
 
         <div style={{ marginTop:'20px', padding:'14px 16px', borderRadius:'10px',
           background:T.card, border:`1px solid ${T.border}` }}>
