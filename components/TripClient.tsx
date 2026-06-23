@@ -96,7 +96,7 @@ function EventFormModal({ event, dayId, onSave, onClose }: {
 }) {
   const [time,     setTime]     = useState(event?.time     || '09:00')
   const [title,    setTitle]    = useState(event?.title    || '')
-  const [type,     setType]     = useState(event?.type     || 'activity')
+  const [type,     setType]     = useState<Event['type']>(event?.type || 'activity')
   const [note,     setNote]     = useState(event?.note     || '')
   const [alertMin, setAlertMin] = useState(event?.alert_min ?? 30)
   const [saving,   setSaving]   = useState(false)
@@ -137,7 +137,7 @@ function EventFormModal({ event, dayId, onSave, onClose }: {
         <div>
           <label style={{ display:'block', fontSize:'11px', fontWeight:700,
             color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>種類</label>
-          <select value={type} onChange={e=>setType(e.target.value)} style={inputSt}>
+          <select value={type} onChange={e=>setType(e.target.value as Event['type'])} style={inputSt}>
             {Object.entries(TYPE_META).map(([k,v]) => (
               <option key={k} value={k}>{v.icon} {v.label}</option>
             ))}
