@@ -1,7 +1,30 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { addDay, addEvent, updateEvent, deleteEvent, deleteDay } from '@/lib/trips'
+// write operations go through API routes (lib/trips uses server-only env vars)
+async function apiAddEvent(body: object) {
+  const res = await fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+async function apiUpdateEvent(id: string, body: object) {
+  const res = await fetch(`/api/events/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+async function apiDeleteEvent(id: string) {
+  const res = await fetch(`/api/events/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
+}
+async function apiAddDay(body: object) {
+  const res = await fetch('/api/days', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+async function apiDeleteDay(id: string) {
+  const res = await fetch(`/api/days/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
+}
 import type { Trip, TripDay, Event } from '@/types'
 
 const T = {
@@ -140,9 +163,9 @@ function EventFormModal({ event, dayId, onSave, onClose }: {
     try {
       let saved
       if (event?.id) {
-        saved = await updateEvent(event.id, { time, title, type: type as any, note, alert_min: alertMin })
+        saved = await apiUpdateEvent(event.id, { time, title, type, note, alert_min: alertMin })
       } else {
-        saved = await addEvent({ day_id: dayId, time, title, type: type as any, note, alert_min: alertMin })
+        saved = await apiAddEvent({ day_id: dayId, time, title, type, note, alert_min: alertMin })
       }
       onSave(saved)
     } finally {
@@ -271,12 +294,12 @@ function DayFormModal({ tripId, onSave, onClose }: {
     if (!label.trim()) return
     setSaving(true)
     try {
-      const day = await addDay({
+      const day = await apiAddDay({
         trip_id: tripId,
         label: label.trim(),
         date: date || null,
         position: 0,
-      } as any)
+      })
       onSave(day)
     } finally {
       setSaving(false)
@@ -526,7 +549,11 @@ function DayCard({ day, accent, onAddEvent, onEditEvent, onDeleteEvent, onDelete
           event={editingEvent}
           dayId={day.id}
           onSave={ev => {
-            onAddEvent(ev)
+            if (editingEvent) {
+              onEditEvent(ev)
+            } else {
+              onAddEvent(ev)
+            }
             setShowEventForm(false)
             setEditingEvent(undefined)
           }}
@@ -580,7 +607,7 @@ export default function TripClient({ trip: initialTrip, session }: {
   }
 
   const handleDeleteEvent = async (dayId: string, evId: string) => {
-    await deleteEvent(evId)
+    await apiDeleteEvent(evId)
     updateDays((trip.days || []).map(d =>
       d.id !== dayId ? d : {
         ...d,
@@ -590,7 +617,7 @@ export default function TripClient({ trip: initialTrip, session }: {
   }
 
   const handleDeleteDay = async (dayId: string) => {
-    await deleteDay(dayId)
+    await apiDeleteDay(dayId)
     updateDays((trip.days || []).filter(d => d.id !== dayId))
   }
 
