@@ -202,7 +202,7 @@ export default function ImportClient({ session }: { session: any }) {
   const activeProv = PROVIDERS.find(p => p.id === provider)!
 
   return (
-    <div style={{ minHeight:'100vh', background:T.bg, color:T.textPri,
+    <div style={{ minHeight:'100vh', background:'transparent', color:T.textPri,
       fontFamily:"'Inter','Noto Sans JP',sans-serif" }}>
 
       <div style={{ padding:'20px 20px 0' }}>
