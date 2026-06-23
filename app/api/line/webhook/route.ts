@@ -184,6 +184,30 @@ async function handleCommand(
   }
 
   // --- AI PARSE FLOW ---
+
+  // Explicit help shortcut — skip AI parse entirely
+  if (/^(help|ヘルプ|幫助|說明|使い方)$/i.test(text)) {
+    await replyMessage(replyToken, [textMsg(
+      `🤖 Tabitomo Bot\n\n` +
+      `📖 查詢\n` +
+      `• @Tabi 今天的行程\n` +
+      `• @Tabi 全程行程\n\n` +
+      `✏️ 修改時間\n` +
+      `• @Tabi 咖啡廳改下午三點\n` +
+      `• @Tabi 晚餐改18:30\n` +
+      `• @Tabi 集合延後30分\n\n` +
+      `➕ 新增行程\n` +
+      `• @Tabi 新增下午兩點 海灘散步\n` +
+      `• @Tabi 明天下午三點加咖啡廳\n\n` +
+      `🗑️ 取消行程\n` +
+      `• @Tabi 取消晚餐\n` +
+      `• @Tabi 刪除咖啡廳\n\n` +
+      `⚠️ 變更需要確認，Bot 會先詢問你\n` +
+      `✏️ 複雜操作請在 App 中修改：\nhttps://tabitomo-gilt.vercel.app`
+    )])
+    return
+  }
+
   const events = flattenEvents(trip)
 
   // Try rule-based parser first
@@ -203,7 +227,22 @@ async function handleCommand(
 
   if (!parsed || parsed.confidence < 0.5) {
     await replyMessage(replyToken, [textMsg(
-      `🤖 Tabitomo Bot\n\n使い方：\n• 今日の予定は？\n• 行程を見せて\n• @Tabi 咖啡廳改下午三點\n• @Tabi 取消晚餐\n• @Tabi 新增下午兩點 海灘散步\n\n✏️ 変更はアプリから：\nhttps://tabitomo-gilt.vercel.app`
+      `🤖 Tabitomo Bot\n\n` +
+      `📖 查詢\n` +
+      `• @Tabi 今天的行程\n` +
+      `• @Tabi 全程行程\n\n` +
+      `✏️ 修改時間\n` +
+      `• @Tabi 咖啡廳改下午三點\n` +
+      `• @Tabi 晚餐改18:30\n` +
+      `• @Tabi 集合延後30分\n\n` +
+      `➕ 新增行程\n` +
+      `• @Tabi 新增下午兩點 海灘散步\n` +
+      `• @Tabi 明天下午三點加咖啡廳\n\n` +
+      `🗑️ 取消行程\n` +
+      `• @Tabi 取消晚餐\n` +
+      `• @Tabi 刪除咖啡廳\n\n` +
+      `⚠️ 變更需要確認，Bot 會先詢問你\n` +
+      `✏️ 複雜操作請在 App 中修改：\nhttps://tabitomo-gilt.vercel.app`
     )])
     return
   }
