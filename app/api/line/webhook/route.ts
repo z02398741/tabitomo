@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
+import { parseRule } from '@/lib/rules/parser'
+import { parseWithGemini, type EventSummary } from '@/lib/ai/gemini'
+import { savePendingAction, getPendingAction, clearPendingAction } from '@/lib/actions/pending'
+import { executeUpdate } from '@/lib/rules/update'
+import { executeCreate } from '@/lib/rules/create'
+import { executeDelete } from '@/lib/rules/delete'
+import { replyMessage, textMsg, quickReplyMsg } from '@/lib/line/reply'
+import { confirmationText, successText } from '@/lib/line/messages'
+import type { ParsedAction } from '@/types/action'
 
 function getAdmin() {
   return createClient(
@@ -11,40 +20,22 @@ function getAdmin() {
 
 function verifySignature(body: string, signature: string): boolean {
   const secret = process.env.LINE_MESSAGING_CHANNEL_SECRET!
-  const hash = crypto
-    .createHmac('SHA256', secret)
-    .update(body)
-    .digest('base64')
+  const hash = crypto.createHmac('SHA256', secret).update(body).digest('base64')
   return hash === signature
-}
-
-async function reply(replyToken: string, messages: any[]) {
-  console.log('reply called:', replyToken, JSON.stringify(messages))
-  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.LINE_MESSAGING_ACCESS_TOKEN}`,
-    },
-    body: JSON.stringify({ replyToken, messages }),
-  })
-  const result = await res.text()
-  console.log('reply result:', res.status, result)
 }
 
 function formatTrip(trip: any): string {
   const lines: string[] = [`📍 ${trip.title}`]
   if (trip.transport) lines.push(`🚢 ${trip.transport}`)
   lines.push('')
-
   for (const day of trip.days || []) {
     lines.push(`▶ ${day.label}`)
     for (const ev of day.events || []) {
       const icon: Record<string, string> = {
-        transport:'🚢', gather:'📍', activity:'🤿',
-        meal:'🍽', stay:'🏨', free:'🌊'
+        transport: '🚢', gather: '📍', activity: '🤿',
+        meal: '🍽', stay: '🏨', free: '🌊',
       }
-      lines.push(`${icon[ev.type]||'•'} ${ev.time} ${ev.title}`)
+      lines.push(`${icon[ev.type] || '•'} ${ev.time} ${ev.title}`)
     }
     lines.push('')
   }
@@ -55,23 +46,53 @@ function getTodayEvents(trip: any): string {
   const today = new Date().toISOString().split('T')[0]
   const day = trip.days?.find((d: any) => d.date === today)
   if (!day || !day.events?.length) return '今日の予定はありません'
-
   const lines = [`📅 ${day.label} の予定`]
   for (const ev of day.events) {
     const icon: Record<string, string> = {
-      transport:'🚢', gather:'📍', activity:'🤿',
-      meal:'🍽', stay:'🏨', free:'🌊'
+      transport: '🚢', gather: '📍', activity: '🤿',
+      meal: '🍽', stay: '🏨', free: '🌊',
     }
-    lines.push(`${icon[ev.type]||'•'} ${ev.time} ${ev.title}`)
+    lines.push(`${icon[ev.type] || '•'} ${ev.time} ${ev.title}`)
     if (ev.note) lines.push(`   📝 ${ev.note}`)
   }
   return lines.join('\n')
 }
 
-async function handleCommand(text: string, groupId: string, replyToken: string) {
+function flattenEvents(trip: any): EventSummary[] {
+  const result: EventSummary[] = []
+  for (const day of trip.days || []) {
+    for (const ev of day.events || []) {
+      result.push({ id: ev.id, title: ev.title, time: ev.time, day: day.label, dayId: day.id })
+    }
+  }
+  return result
+}
+
+function resolveEvent(events: EventSummary[], title: string): EventSummary | null {
+  const t = title.toLowerCase()
+  return events.find(e => e.title.toLowerCase().includes(t) || t.includes(e.title.toLowerCase())) ?? null
+}
+
+function resolveDay(trip: any, hint: 'today' | 'tomorrow' | undefined): string | null {
+  const today = new Date().toISOString().split('T')[0]
+  if (!hint) {
+    const day = trip.days?.find((d: any) => d.date === today) ?? trip.days?.[0]
+    return day?.id ?? null
+  }
+  const target = hint === 'today' ? today : new Date(Date.now() + 86400000).toISOString().split('T')[0]
+  const day = trip.days?.find((d: any) => d.date === target)
+  return day?.id ?? null
+}
+
+async function handleCommand(
+  text: string,
+  groupId: string,
+  userId: string,
+  replyToken: string,
+) {
   const supabase = getAdmin()
 
-  // 連携コマンド: 連携 <trip_id>
+  // 連携コマンド
   const bindMatch = text.match(/連携\s+([a-f0-9-]{36})/i)
   if (bindMatch) {
     const tripId = bindMatch[1]
@@ -81,50 +102,149 @@ async function handleCommand(text: string, groupId: string, replyToken: string) 
       .eq('id', tripId)
       .select('title')
       .single()
-
     if (error || !trip) {
-      await reply(replyToken, [{ type: 'text', text: '⚠️ 行程が見つかりませんでした。IDを確認してください。' }])
+      await replyMessage(replyToken, [textMsg('⚠️ 行程が見つかりませんでした。IDを確認してください。')])
     } else {
-      await reply(replyToken, [{ type: 'text', text: `✅ 「${trip.title}」とこのグループを連携しました！\n予定通知がここに届くようになります。` }])
+      await replyMessage(replyToken, [textMsg(`✅ 「${trip.title}」とこのグループを連携しました！\n予定通知がここに届くようになります。`)])
     }
     return
   }
 
+  // Fetch trip linked to this group
   const { data: trip } = await supabase
     .from('trips')
-    .select(`*, days:trip_days(*, events(*))`)
+    .select('*, days:trip_days(*, events(*))')
     .eq('line_group_id', groupId)
     .single()
 
   if (!trip) {
-    await reply(replyToken, [{
-      type: 'text',
-      text: '⚠️ このグループにはまだ行程が登録されていません。\nhttps://tabitomo-gilt.vercel.app'
-    }])
+    await replyMessage(replyToken, [textMsg('⚠️ このグループにはまだ行程が登録されていません。\nhttps://tabitomo-gilt.vercel.app')])
     return
   }
 
+  // Check if user is owner/editor
+  const { data: member } = await supabase
+    .from('trip_members')
+    .select('role')
+    .eq('trip_id', trip.id)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const canEdit = member?.role === 'owner' || member?.role === 'editor'
+
+  // Confirmation: user replies 確認/確定/yes to pending action
+  const confirmed = /^(確認|確定|はい|yes|ok|OK|好|好的)$/i.test(text)
+  const cancelled = /^(取消|キャンセル|いいえ|no|No|算了|不用了)$/i.test(text)
+
+  if (confirmed || cancelled) {
+    const pending = await getPendingAction(groupId, userId)
+    if (pending) {
+      await clearPendingAction(groupId, userId)
+      if (cancelled) {
+        await replyMessage(replyToken, [textMsg('已取消，行程未變更。')])
+        return
+      }
+      // Execute the pending action
+      try {
+        const action = pending.action_json
+        if (action.action === 'update') await executeUpdate(action)
+        else if (action.action === 'create') await executeCreate(action)
+        else if (action.action === 'delete') await executeDelete(action)
+        else {
+          await replyMessage(replyToken, [textMsg('⚠️ 此操作類型暫不支持自動執行，請在 App 中修改。')])
+          return
+        }
+        await replyMessage(replyToken, [textMsg(successText(action))])
+      } catch (e) {
+        console.error('execute error:', e)
+        await replyMessage(replyToken, [textMsg('⚠️ 執行時發生錯誤，請在 App 中確認。')])
+      }
+      return
+    }
+    // No pending — fall through to normal handling
+  }
+
+  // Quick commands
   const lower = text.toLowerCase()
-
-  if (lower.includes('今日') || lower.includes('予定') || lower.includes('スケジュール')) {
-    await reply(replyToken, [{ type:'text', text: getTodayEvents(trip) }])
+  if (lower.includes('今日') || lower.includes('予定') || lower.includes('スケジュール') || lower.includes('今天')) {
+    await replyMessage(replyToken, [textMsg(getTodayEvents(trip))])
+    return
+  }
+  if (lower.includes('行程') || lower.includes('全部') || lower.includes('全体') || lower.includes('全程')) {
+    await replyMessage(replyToken, [textMsg(formatTrip(trip))])
     return
   }
 
-  if (lower.includes('行程') || lower.includes('全部') || lower.includes('全体')) {
-    await reply(replyToken, [{ type:'text', text: formatTrip(trip) }])
+  // If user cannot edit, skip AI parse
+  if (!canEdit) {
+    await replyMessage(replyToken, [textMsg(
+      `🤖 Tabitomo Bot\n\n使い方：\n• 今日の予定は？\n• 行程を見せて\n\n✏️ 変更はアプリから：\nhttps://tabitomo-gilt.vercel.app`
+    )])
     return
   }
 
-  await reply(replyToken, [{
-    type: 'text',
-    text: `🤖 Tabitomo Bot\n\n使い方：\n• 今日の予定は？\n• 行程を見せて\n\n✏️ 変更はアプリから：\nhttps://tabitomo-gilt.vercel.app`
-  }])
+  // --- AI PARSE FLOW ---
+  const events = flattenEvents(trip)
+
+  // Try rule-based parser first
+  let parsed: ParsedAction | null = null
+  const ruleResult = parseRule(text)
+  if (ruleResult && ruleResult.confidence >= 0.8) {
+    parsed = { ...ruleResult, raw: text }
+  }
+
+  // Fallback to Gemini
+  if (!parsed) {
+    const geminiResult = await parseWithGemini(text, events)
+    if (geminiResult.confidence >= 0.6) {
+      parsed = geminiResult
+    }
+  }
+
+  if (!parsed || parsed.confidence < 0.5) {
+    await replyMessage(replyToken, [textMsg(
+      `🤖 Tabitomo Bot\n\n使い方：\n• 今日の予定は？\n• 行程を見せて\n• @Tabi 咖啡廳改下午三點\n• @Tabi 取消晚餐\n• @Tabi 新增下午兩點 海灘散步\n\n✏️ 変更はアプリから：\nhttps://tabitomo-gilt.vercel.app`
+    )])
+    return
+  }
+
+  // Resolve event reference (by title) if not already resolved by Gemini
+  if (!parsed.eventId && parsed.eventTitle) {
+    const matched = resolveEvent(events, parsed.eventTitle)
+    if (matched) {
+      parsed.eventId = matched.id
+      parsed.eventTitle = matched.title
+      parsed.oldTime = matched.time
+    }
+  }
+
+  // For create: resolve dayId if not set
+  if (parsed.action === 'create' && !parsed.dayId) {
+    parsed.dayId = resolveDay(trip, (ruleResult as any)?.dayHint) ?? undefined
+  }
+
+  // Validate required fields
+  if (parsed.action !== 'create' && !parsed.eventId) {
+    await replyMessage(replyToken, [textMsg(`⚠️ 找不到行程項目「${parsed.eventTitle || text}」，請確認名稱。`)])
+    return
+  }
+  if (parsed.action === 'create' && !parsed.dayId) {
+    await replyMessage(replyToken, [textMsg('⚠️ 無法確認新增到哪一天，請在 App 中操作。')])
+    return
+  }
+
+  // Save pending action and ask for confirmation
+  await savePendingAction(groupId, userId, trip.id, parsed)
+  await replyMessage(replyToken, [
+    quickReplyMsg(confirmationText(parsed), [
+      { label: '✅ 確認', text: '確認' },
+      { label: '❌ 取消', text: '取消' },
+    ]),
+  ])
 }
 
 export async function POST(req: NextRequest) {
   const body = await req.text()
-  console.log('POST received')
 
   const signature = req.headers.get('x-line-signature') || ''
   if (!verifySignature(body, signature)) {
@@ -132,24 +252,26 @@ export async function POST(req: NextRequest) {
   }
 
   const data = JSON.parse(body)
-  console.log('events count:', data.events?.length)
 
   for (const event of data.events || []) {
-    console.log('event type:', event.type)
     if (event.type !== 'message' || event.message?.type !== 'text') continue
 
     const text: string = event.message.text
     const replyToken: string = event.replyToken
     const groupId: string = event.source?.groupId || ''
+    const userId: string = event.source?.userId || ''
 
     const mentionees = event.message?.mention?.mentionees || []
     const isMentionedByObj = mentionees.some((m: { isSelf?: boolean }) => m.isSelf === true)
     const isMentionedByText = text.includes('@Tabi')
 
-    if (!isMentionedByObj && !isMentionedByText) continue
+    // Allow confirmation replies without @mention (they're direct responses to bot prompt)
+    const isConfirmation = /^(確認|確定|はい|yes|ok|OK|好|好的|取消|キャンセル|いいえ|no|No|算了|不用了)$/i.test(text.trim())
 
-    const command = text.replace(/@\S+\s*/g, '').trim()
-    await handleCommand(command, groupId, replyToken)
+    if (!isMentionedByObj && !isMentionedByText && !isConfirmation) continue
+
+    const command = isConfirmation ? text.trim() : text.replace(/@\S+\s*/g, '').trim()
+    await handleCommand(command, groupId, userId, replyToken)
   }
 
   return NextResponse.json({ ok: true })
