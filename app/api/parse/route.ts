@@ -61,7 +61,7 @@ async function parseClaude(text: string) {
 
 async function parseGemini(text: string) {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
   const result = await model.generateContent(
     `${SYSTEM_PROMPT}\n\n${USER_PROMPT(text)}`
   )

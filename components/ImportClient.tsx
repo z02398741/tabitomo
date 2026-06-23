@@ -280,7 +280,7 @@ export default function ImportClient({ session }: { session: any }) {
 
         {provider !== 'keyword' && (
           <div style={{ marginTop:'8px', fontSize:'11px', color:T.textDim, textAlign:'center' }}>
-            Gemini 2.0 Flash（高速）で解析します
+            Gemini 2.5 Flash で解析します
           </div>
         )}
 
