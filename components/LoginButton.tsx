@@ -1,10 +1,15 @@
 'use client'
 import { signIn } from 'next-auth/react'
+import { useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
 
-export default function LoginButton() {
+function LoginButtonContent() {
+  const params = useSearchParams()
+  const next = params.get('next') || '/'
+
   return (
     <button
-      onClick={() => signIn('line', { callbackUrl: '/' })}
+      onClick={() => signIn('line', { callbackUrl: next })}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -26,5 +31,13 @@ export default function LoginButton() {
       </svg>
       LINE でログイン
     </button>
+  )
+}
+
+export default function LoginButton() {
+  return (
+    <Suspense>
+      <LoginButtonContent />
+    </Suspense>
   )
 }
