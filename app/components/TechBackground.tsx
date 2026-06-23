@@ -63,17 +63,19 @@ export default function TechBackground({
   const mouseRef  = useRef({ x: -9999, y: -9999 })
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    const maybeCanvas = canvasRef.current
+    if (!maybeCanvas) return
+    // Assign to explicitly-typed consts so TypeScript tracks them as non-null in closures
+    const canvas: HTMLCanvasElement = maybeCanvas
+    const maybeCtx = canvas.getContext('2d')
+    if (!maybeCtx) return
+    const ctx: CanvasRenderingContext2D = maybeCtx
 
     const dpr = window.devicePixelRatio || 1
     let w = 0
     let h = 0
 
     function resize() {
-      if (!canvas || !ctx) return
       w = window.innerWidth
       h = window.innerHeight
       canvas.width  = w * dpr
