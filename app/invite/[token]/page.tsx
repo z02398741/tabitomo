@@ -70,11 +70,7 @@ export default async function InvitePage({
       role: 'member',
     })
     console.log('[invite] insert error:', JSON.stringify(insertError))
-
-    await supabase
-      .from('invite_tokens')
-      .update({ used: true })
-      .eq('token', token)
+    // token remains valid until expiry — multiple people can use the same link
   }
 
   redirect(`/trips/${invite.trip_id}`)
