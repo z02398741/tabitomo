@@ -27,6 +27,12 @@ export async function POST(req: Request) {
 
   const supabase = getAdmin()
   const userId = (session.user as any).id
+  console.log({
+  userId,
+  eventId,
+  name,
+  fileName: file?.name
+})
   const ext = file.name.split('.').pop()
   const path = `${userId}/${eventId}/${Date.now()}.${ext}`
 
