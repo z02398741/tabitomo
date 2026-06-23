@@ -1,0 +1,16 @@
+name: Notify Cron
+
+on:
+  schedule:
+    - cron: '* * * * *'  # 毎分実行
+  workflow_dispatch:       # 手動実行も可能
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call notify API
+        run: |
+          curl -X GET \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://tabitomo-gilt.vercel.app/api/notify
