@@ -4,7 +4,12 @@ import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const SYSTEM_PROMPT = `You are a travel itinerary parser. Extract structured data from the given itinerary text and return ONLY valid JSON with no markdown, no explanation.
+const SYSTEM_PROMPT = `You are a travel itinerary assistant. You have two modes:
+
+MODE A — PARSE: If the input contains a detailed schedule with times (HH:MM), extract and structure it.
+MODE B — PLAN: If the input is a brief request or description without a detailed schedule, CREATE a realistic, detailed itinerary from scratch based on the destination, duration, and any preferences mentioned. Fill every day with practical, specific events (real place names, realistic times).
+
+Always return ONLY valid JSON with no markdown, no explanation.
 
 Return this exact shape:
 {
@@ -32,9 +37,9 @@ Return this exact shape:
 Rules:
 - type must be one of: transport, gather, meal, activity, stay, free
 - alert_min: transport=60, gather=60, meal=15, activity=30, stay=0, free=0
-- date: convert relative dates to YYYY-MM-DD using year 2026 if year not specified
-- Include only events that have a time (HH:MM format)
-- Lines starting with ※ or → are notes for the previous event, not new events
+- date: use YYYY-MM-DD format with year 2026 if not specified
+- Every day must have at least 5 events with realistic HH:MM times
+- Lines starting with ※ or → are notes for the previous event
 - Return ONLY the JSON object, nothing else`
 
 const USER_PROMPT = (text: string) =>
