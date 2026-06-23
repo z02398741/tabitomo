@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
 import LoginButton from '@/components/LoginButton'
+import TabitomoLogo from '@/components/logo/TabitomoLogo'
 
 function LoginContent() {
   return (
@@ -10,8 +11,9 @@ function LoginContent() {
     }}>
       <div style={{ width: '100%', maxWidth: '360px' }}>
         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#6c8ef5',
-            letterSpacing: '.2em', marginBottom: '12px' }}>TABITOMO</div>
+          <div style={{ display:'flex', justifyContent:'center', marginBottom:'12px' }}>
+            <TabitomoLogo />
+          </div>
           <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#edf0f7',
             margin: '0 0 8px' }}>旅行プランナー</h1>
           <p style={{ fontSize: '14px', color: '#8b93b0', margin: 0 }}>

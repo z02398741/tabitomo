@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import TabitomoLogo from '@/components/logo/TabitomoLogo'
 // write operations go through API routes (lib/trips uses server-only env vars)
 async function apiAddEvent(body: object) {
   const res = await fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -789,8 +790,7 @@ export default function TripClient({ trip: initialTrip, session }: {
 
         <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
           <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:'10px', fontWeight:700, color:T.accent,
-              letterSpacing:'.15em', marginBottom:'6px' }}>TABITOMO</div>
+            <div style={{ marginBottom:'6px' }}><TabitomoLogo /></div>
             <h1 style={{ fontSize:'22px', fontWeight:700, color:T.textPri,
               margin:'0 0 6px', lineHeight:1.3 }}>{trip.title}</h1>
             <div style={{ fontSize:'12px', color:T.textSec }}>

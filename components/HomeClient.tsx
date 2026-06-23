@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import type { Trip } from '@/types'
+import TabitomoLogo from '@/components/logo/TabitomoLogo'
 
 // ── Design Tokens ──────────────────────────────────────────────
 const T = {
@@ -249,8 +250,7 @@ export default function HomeClient({ session }: { session: any }) {
       <div style={{ padding:'36px 20px 24px', display:'flex',
         justifyContent:'space-between', alignItems:'flex-start' }}>
         <div>
-          <div style={{ fontSize:'10px', fontWeight:700, color:T.accent,
-            letterSpacing:'.2em', marginBottom:'8px' }}>TABITOMO</div>
+          <div style={{ marginBottom:'8px' }}><TabitomoLogo /></div>
           <h1 style={{ fontSize:'28px', fontWeight:700, color:T.textPri,
             margin:'0 0 4px' }}>旅行プランナー</h1>
           <p style={{ fontSize:'13px', color:T.textSec, margin:0 }}>
