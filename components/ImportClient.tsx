@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import TabitomoLogo from '@/components/logo/TabitomoLogo'
 
 const T = {
   bg:       '#0d0f14',
@@ -211,8 +212,7 @@ export default function ImportClient({ session }: { session: any }) {
           marginBottom:'20px' }}>
           {Ico.back} 戻る
         </button>
-        <div style={{ fontSize:'10px', fontWeight:700, color:T.accent,
-          letterSpacing:'.15em', marginBottom:'6px' }}>AI IMPORT</div>
+        <div style={{ marginBottom:'6px' }}><TabitomoLogo /></div>
         <h1 style={{ fontSize:'22px', fontWeight:700, color:T.textPri,
           margin:'0 0 4px' }}>行程テキストを貼り付ける</h1>
         <p style={{ fontSize:'13px', color:T.textSec, margin:'0 0 16px' }}>
