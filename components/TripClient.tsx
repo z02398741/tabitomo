@@ -1,0 +1,625 @@
+'use client'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { addDay, addEvent, updateEvent, deleteEvent, deleteDay } from '@/lib/trips'
+import type { Trip, TripDay, Event } from '@/types'
+
+const T = {
+  bg:       '#0d0f14',
+  card:     '#1a1e2a',
+  cardHov:  '#1f2435',
+  border:   '#252a3a',
+  borderLt: '#2e3448',
+  accent:   '#6c8ef5',
+  accentLt: '#8aaaf8',
+  accentDim:'#6c8ef522',
+  teal:     '#4ecdc4',
+  amber:    '#f5a623',
+  rose:     '#f06292',
+  green:    '#66bb6a',
+  textPri:  '#edf0f7',
+  textSec:  '#8b93b0',
+  textDim:  '#4a5170',
+}
+
+const DAY_ACCENTS = ['#6c8ef5','#4ecdc4','#f5a623','#f06292','#a78bfa']
+
+const TYPE_META: Record<string, { label: string; color: string; icon: string }> = {
+  transport: { label:'移動', color:'#6c8ef5', icon:'🚢' },
+  gather:    { label:'集合', color:'#f5a623', icon:'📍' },
+  activity:  { label:'活動', color:'#4ecdc4', icon:'🤿' },
+  meal:      { label:'食事', color:'#f06292', icon:'🍽' },
+  stay:      { label:'宿泊', color:'#a78bfa', icon:'🏨' },
+  free:      { label:'自由', color:'#8b93b0', icon:'🌊' },
+}
+
+const ALERT_OPTIONS = [
+  { value:0,   label:'通知なし' },
+  { value:15,  label:'15分前' },
+  { value:30,  label:'30分前' },
+  { value:60,  label:'1時間前' },
+  { value:120, label:'2時間前' },
+]
+
+const inputSt: React.CSSProperties = {
+  width:'100%', padding:'10px 12px', borderRadius:'9px',
+  border:`1px solid ${T.border}`, background:'#13161e',
+  color:T.textPri, fontSize:'13px', fontFamily:'inherit',
+  boxSizing:'border-box', outline:'none',
+}
+
+const Ico = {
+  back:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>,
+  plus:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+  edit:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>,
+  trash: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>,
+  cal:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+  export:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
+  copy:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
+  check: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>,
+  bell:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
+}
+
+// ── Modal ──────────────────────────────────────────────────────
+function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)',
+      backdropFilter:'blur(4px)', display:'flex', alignItems:'center',
+      justifyContent:'center', zIndex:100, padding:'16px' }}>
+      <div style={{ background:T.card, border:`1px solid ${T.border}`,
+        borderRadius:'20px', padding:'24px', width:'100%', maxWidth:'460px',
+        boxShadow:'0 32px 80px rgba(0,0,0,.5)', maxHeight:'90vh', overflowY:'auto' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+// ── Badge ──────────────────────────────────────────────────────
+function Badge({ type }: { type: string }) {
+  const m = TYPE_META[type] || TYPE_META.free
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:'4px',
+      padding:'2px 8px', borderRadius:'20px', fontSize:'9px', fontWeight:700,
+      background:m.color+'20', color:m.color, border:`1px solid ${m.color}30` }}>
+      {m.icon} {m.label}
+    </span>
+  )
+}
+
+// ── Event Form Modal ───────────────────────────────────────────
+function EventFormModal({ event, dayId, onSave, onClose }: {
+  event?: Event
+  dayId: string
+  onSave: (ev: Event) => void
+  onClose: () => void
+}) {
+  const [time,     setTime]     = useState(event?.time     || '09:00')
+  const [title,    setTitle]    = useState(event?.title    || '')
+  const [type,     setType]     = useState(event?.type     || 'activity')
+  const [note,     setNote]     = useState(event?.note     || '')
+  const [alertMin, setAlertMin] = useState(event?.alert_min ?? 30)
+  const [saving,   setSaving]   = useState(false)
+
+  const save = async () => {
+    if (!title.trim()) return
+    setSaving(true)
+    try {
+      let saved
+      if (event?.id) {
+        saved = await updateEvent(event.id, { time, title, type: type as any, note, alert_min: alertMin })
+      } else {
+        saved = await addEvent({ day_id: dayId, time, title, type: type as any, note, alert_min: alertMin })
+      }
+      onSave(saved)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display:'flex', justifyContent:'space-between',
+        alignItems:'center', marginBottom:'20px' }}>
+        <span style={{ fontSize:'16px', fontWeight:700, color:T.textPri }}>
+          {event ? 'イベントを編集' : 'イベントを追加'}
+        </span>
+        <button onClick={onClose} style={{ background:'none', border:'none',
+          color:T.textDim, cursor:'pointer', fontSize:'20px' }}>×</button>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'14px' }}>
+        <div>
+          <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+            color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>時間 *</label>
+          <input type="time" value={time} onChange={e=>setTime(e.target.value)} style={inputSt}/>
+        </div>
+        <div>
+          <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+            color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>種類</label>
+          <select value={type} onChange={e=>setType(e.target.value)} style={inputSt}>
+            {Object.entries(TYPE_META).map(([k,v]) => (
+              <option key={k} value={k}>{v.icon} {v.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div style={{ marginBottom:'14px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>タイトル *</label>
+        <input value={title} onChange={e=>setTitle(e.target.value)}
+          placeholder="例：竹芝ターミナル 集合" style={inputSt}/>
+      </div>
+
+      <div style={{ marginBottom:'14px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>メモ</label>
+        <textarea value={note} onChange={e=>setNote(e.target.value)}
+          rows={2} placeholder="持ち物、注意事項など"
+          style={{ ...inputSt, resize:'vertical' }}/>
+      </div>
+
+      <div style={{ marginBottom:'20px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'8px' }}>通知タイミング</label>
+        <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+          {ALERT_OPTIONS.map(o => (
+            <button key={o.value} onClick={() => setAlertMin(o.value)} style={{
+              padding:'6px 12px', borderRadius:'20px',
+              border:`1px solid ${alertMin===o.value ? T.accent : T.border}`,
+              background: alertMin===o.value ? T.accentDim : 'none',
+              color: alertMin===o.value ? T.accentLt : T.textSec,
+              cursor:'pointer', fontSize:'12px', fontWeight:600 }}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end' }}>
+        <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:'10px',
+          border:`1px solid ${T.border}`, background:'none', cursor:'pointer',
+          fontSize:'13px', color:T.textSec }}>キャンセル</button>
+        <button onClick={save} disabled={!title.trim() || saving} style={{
+          padding:'9px 20px', borderRadius:'10px', border:'none',
+          background: title.trim() && !saving ? T.accent : T.textDim+'44',
+          color:'#fff', cursor: title.trim() && !saving ? 'pointer' : 'default',
+          fontSize:'13px', fontWeight:600 }}>
+          {saving ? '保存中...' : event ? '保存' : '追加'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+// ── Day Form Modal ─────────────────────────────────────────────
+function DayFormModal({ tripId, onSave, onClose }: {
+  tripId: string
+  onSave: (day: TripDay) => void
+  onClose: () => void
+}) {
+  const [label,  setLabel]  = useState('')
+  const [date,   setDate]   = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    if (!label.trim()) return
+    setSaving(true)
+    try {
+      const day = await addDay({
+        trip_id: tripId,
+        label: label.trim(),
+        date: date || null,
+        position: 0,
+      } as any)
+      onSave(day)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display:'flex', justifyContent:'space-between',
+        alignItems:'center', marginBottom:'20px' }}>
+        <span style={{ fontSize:'16px', fontWeight:700, color:T.textPri }}>日程を追加</span>
+        <button onClick={onClose} style={{ background:'none', border:'none',
+          color:T.textDim, cursor:'pointer', fontSize:'20px' }}>×</button>
+      </div>
+
+      <div style={{ marginBottom:'14px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>ラベル *</label>
+        <input value={label} onChange={e=>setLabel(e.target.value)}
+          placeholder="例：Day1｜7/18（五）" style={inputSt}/>
+      </div>
+
+      <div style={{ marginBottom:'20px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>日付</label>
+        <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inputSt}/>
+      </div>
+
+      <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end' }}>
+        <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:'10px',
+          border:`1px solid ${T.border}`, background:'none', cursor:'pointer',
+          fontSize:'13px', color:T.textSec }}>キャンセル</button>
+        <button onClick={save} disabled={!label.trim() || saving} style={{
+          padding:'9px 20px', borderRadius:'10px', border:'none',
+          background: label.trim() && !saving ? T.accent : T.textDim+'44',
+          color:'#fff', cursor: label.trim() && !saving ? 'pointer' : 'default',
+          fontSize:'13px', fontWeight:600 }}>
+          {saving ? '追加中...' : '追加'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+// ── Export Modal ───────────────────────────────────────────────
+function ExportModal({ trip, onClose }: { trip: Trip; onClose: () => void }) {
+  const [mode,   setMode]   = useState<'text'|'line'>('text')
+  const [copied, setCopied] = useState(false)
+
+  const toText = () => {
+    const lines = [`【${trip.title}】`]
+    if (trip.members)   lines.push(`👥 ${trip.members}名`)
+    if (trip.budget)    lines.push(`💰 ${trip.budget}`)
+    if (trip.transport) lines.push(`🚢 ${trip.transport}`)
+    trip.days?.forEach(d => {
+      lines.push('', '─'.repeat(26), `■ ${d.label}`)
+      d.events?.forEach(e => lines.push(`${e.time}　${e.title}${e.note?`（${e.note}）`:''}`))
+    })
+    return lines.join('\n')
+  }
+
+  const toLine = () => {
+    const EI: Record<string, string> = { transport:'🚢', gather:'📍', activity:'🤿', meal:'🍽', stay:'🏨', free:'🌊' }
+    const lines = [`📍 *${trip.title}*`, '']
+    trip.days?.forEach(d => {
+      lines.push(`▶ ${d.label}`)
+      d.events?.forEach(e => lines.push(`${EI[e.type]||'•'} ${e.time} ${e.title}`))
+      lines.push('')
+    })
+    lines.push('✅ 詳細はTabitomoで確認！')
+    return lines.join('\n')
+  }
+
+  const content = mode === 'line' ? toLine() : toText()
+
+  const copy = () => {
+    navigator.clipboard.writeText(content).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display:'flex', justifyContent:'space-between',
+        alignItems:'center', marginBottom:'16px' }}>
+        <span style={{ fontSize:'16px', fontWeight:700, color:T.textPri }}>エクスポート</span>
+        <button onClick={onClose} style={{ background:'none', border:'none',
+          color:T.textDim, cursor:'pointer', fontSize:'20px' }}>×</button>
+      </div>
+      <div style={{ display:'flex', gap:'6px', marginBottom:'14px' }}>
+        {([['text','📋 テキスト'],['line','💬 LINE用']] as const).map(([v,l]) => (
+          <button key={v} onClick={() => setMode(v)} style={{
+            padding:'7px 16px', borderRadius:'20px',
+            border:`1.5px solid ${mode===v ? T.accent : T.border}`,
+            background: mode===v ? T.accentDim : 'none',
+            color: mode===v ? T.accentLt : T.textSec,
+            cursor:'pointer', fontSize:'12px', fontWeight:600 }}>{l}</button>
+        ))}
+      </div>
+      <pre style={{ background:'#13161e', border:`1px solid ${T.border}`,
+        borderRadius:'12px', padding:'14px', fontSize:'12px', lineHeight:1.7,
+        overflowY:'auto', maxHeight:'260px', whiteSpace:'pre-wrap',
+        color:T.textSec, margin:'0 0 14px' }}>{content}</pre>
+      <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end' }}>
+        <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:'10px',
+          border:`1px solid ${T.border}`, background:'none', cursor:'pointer',
+          fontSize:'13px', color:T.textSec }}>閉じる</button>
+        <button onClick={copy} style={{ padding:'9px 20px', borderRadius:'10px',
+          border:'none', background: copied ? '#4caf8f' : T.accent,
+          color:'#fff', cursor:'pointer', fontSize:'13px', fontWeight:600,
+          display:'flex', alignItems:'center', gap:'6px' }}>
+          {copied ? <>{Ico.check} コピー済み</> : <>{Ico.copy} コピー</>}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+// ── Event Row ──────────────────────────────────────────────────
+function EventRow({ ev, accent, isLast, onEdit, onDelete }: {
+  ev: Event
+  accent: string
+  isLast: boolean
+  onEdit: (ev: Event) => void
+  onDelete: (id: string) => void
+}) {
+  const [hov, setHov] = useState(false)
+  return (
+    <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ display:'flex', gap:'12px', alignItems:'flex-start',
+        paddingBottom: isLast ? 0 : '14px', marginBottom: isLast ? 0 : '14px',
+        borderBottom: isLast ? 'none' : `1px solid ${T.border}` }}>
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
+        paddingTop:'3px', width:'16px', flexShrink:0 }}>
+        <div style={{ width:'8px', height:'8px', borderRadius:'50%', background:accent,
+          boxShadow:`0 0 6px ${accent}88`, flexShrink:0 }}/>
+        {!isLast && <div style={{ width:'1px', flex:1, minHeight:'20px',
+          background:`linear-gradient(${accent}44, transparent)`, marginTop:'4px' }}/>}
+      </div>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'6px',
+          marginBottom:'5px', flexWrap:'wrap' }}>
+          <span style={{ fontSize:'12px', fontWeight:700, color:T.textPri }}>{ev.time}</span>
+          <Badge type={ev.type} />
+          {ev.alert_min > 0 && (
+            <span style={{ display:'inline-flex', alignItems:'center', gap:'3px',
+              fontSize:'9px', color:T.textDim }}>
+              {Ico.bell} {ev.alert_min}分前
+            </span>
+          )}
+        </div>
+        <div style={{ fontSize:'14px', fontWeight:600, color:T.textPri,
+          marginBottom: ev.note ? '3px' : 0 }}>{ev.title}</div>
+        {ev.note && <div style={{ fontSize:'11px', color:T.textSec }}>{ev.note}</div>}
+      </div>
+      <div style={{ display:'flex', gap:'4px', flexShrink:0,
+        opacity: hov ? 1 : 0, transition:'opacity .15s' }}>
+        <button onClick={() => onEdit(ev)} style={{ padding:'5px', borderRadius:'6px',
+          border:`1px solid ${T.border}`, background:'#13161e',
+          color:T.textSec, cursor:'pointer', display:'flex', alignItems:'center' }}>
+          {Ico.edit}
+        </button>
+        <button onClick={() => onDelete(ev.id)} style={{ padding:'5px', borderRadius:'6px',
+          border:`1px solid ${T.border}`, background:'#13161e',
+          color:'#f06292', cursor:'pointer', display:'flex', alignItems:'center' }}>
+          {Ico.trash}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Day Card ───────────────────────────────────────────────────
+function DayCard({ day, accent, onAddEvent, onEditEvent, onDeleteEvent, onDeleteDay }: {
+  day: TripDay & { events?: Event[] }
+  accent: string
+  onAddEvent: (ev: Event) => void
+  onEditEvent: (ev: Event) => void
+  onDeleteEvent: (id: string) => void
+  onDeleteDay: (id: string) => void
+}) {
+  const [open,          setOpen]          = useState(true)
+  const [showEventForm, setShowEventForm] = useState(false)
+  const [editingEvent,  setEditingEvent]  = useState<Event | undefined>()
+  const events = day.events || []
+
+  return (
+    <>
+      <div style={{ background:T.card, border:`1px solid ${T.border}`,
+        borderRadius:'16px', marginBottom:'12px', overflow:'hidden' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'12px',
+          padding:'14px 18px',
+          borderBottom: open ? `1px solid ${T.border}` : 'none' }}>
+          <div onClick={() => setOpen(o=>!o)} style={{ display:'flex',
+            alignItems:'center', gap:'12px', flex:1, cursor:'pointer' }}>
+            <div style={{ width:'3px', height:'36px', borderRadius:'2px',
+              background:accent, flexShrink:0 }}/>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:'13px', fontWeight:700, color:T.textPri,
+                marginBottom:'2px' }}>{day.label}</div>
+              {day.date && <div style={{ fontSize:'11px', color:T.textDim }}>{day.date}</div>}
+            </div>
+            <span style={{ fontSize:'10px', color:T.textDim }}>{events.length}件</span>
+            <span style={{ color:T.textDim, fontSize:'14px',
+              transform: open ? 'rotate(0)' : 'rotate(-90deg)',
+              transition:'transform .2s' }}>▾</span>
+          </div>
+          <div style={{ display:'flex', gap:'4px', flexShrink:0 }}>
+            <button onClick={() => setShowEventForm(true)} style={{
+              padding:'6px 10px', borderRadius:'8px',
+              border:`1px solid ${accent}44`, background:accent+'22',
+              color:accent, cursor:'pointer', display:'flex',
+              alignItems:'center', gap:'4px', fontSize:'11px', fontWeight:700 }}>
+              {Ico.plus} 追加
+            </button>
+            <button onClick={() => onDeleteDay(day.id)} style={{
+              padding:'6px', borderRadius:'8px',
+              border:`1px solid ${T.border}`, background:'none',
+              color:T.textDim, cursor:'pointer', display:'flex', alignItems:'center' }}>
+              {Ico.trash}
+            </button>
+          </div>
+        </div>
+
+        {open && (
+          <div style={{ padding: events.length > 0 ? '16px 18px' : '12px 18px' }}>
+            {events.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'16px 0',
+                color:T.textDim, fontSize:'12px' }}>
+                「追加」からイベントを登録してください
+              </div>
+            ) : (
+              events.map((ev, i) => (
+                <EventRow key={ev.id} ev={ev} accent={accent}
+                  isLast={i === events.length - 1}
+                  onEdit={e => { setEditingEvent(e); setShowEventForm(true) }}
+                  onDelete={onDeleteEvent}/>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {showEventForm && (
+        <EventFormModal
+          event={editingEvent}
+          dayId={day.id}
+          onSave={ev => {
+            onAddEvent(ev)
+            setShowEventForm(false)
+            setEditingEvent(undefined)
+          }}
+          onClose={() => {
+            setShowEventForm(false)
+            setEditingEvent(undefined)
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+// ── Trip Client ────────────────────────────────────────────────
+export default function TripClient({ trip: initialTrip, session }: {
+  trip: Trip
+  session: any
+}) {
+  const router = useRouter()
+  const [trip,        setTrip]        = useState(initialTrip)
+  const [showDayForm, setShowDayForm] = useState(false)
+  const [showExport,  setShowExport]  = useState(false)
+
+  const updateDays = (days: any[]) => setTrip(t => ({ ...t, days }))
+
+  const handleAddDay = (day: TripDay) => {
+    updateDays([...(trip.days || []), { ...day, events: [] }])
+    setShowDayForm(false)
+  }
+
+  const handleAddEvent = (dayId: string, ev: Event) => {
+    updateDays((trip.days || []).map(d =>
+      d.id !== dayId ? d : {
+        ...d,
+        events: [...(d.events || []), ev]
+          .sort((a, b) => a.time.localeCompare(b.time))
+      }
+    ))
+  }
+
+  const handleEditEvent = (dayId: string, ev: Event) => {
+    updateDays((trip.days || []).map(d =>
+      d.id !== dayId ? d : {
+        ...d,
+        events: (d.events || []).map(e => e.id === ev.id ? ev : e)
+          .sort((a, b) => a.time.localeCompare(b.time))
+      }
+    ))
+  }
+
+  const handleDeleteEvent = async (dayId: string, evId: string) => {
+    await deleteEvent(evId)
+    updateDays((trip.days || []).map(d =>
+      d.id !== dayId ? d : {
+        ...d,
+        events: (d.events || []).filter(e => e.id !== evId)
+      }
+    ))
+  }
+
+  const handleDeleteDay = async (dayId: string) => {
+    await deleteDay(dayId)
+    updateDays((trip.days || []).filter(d => d.id !== dayId))
+  }
+
+  return (
+    <div style={{ minHeight:'100vh', background:T.bg, color:T.textPri,
+      fontFamily:"'Inter','Noto Sans JP',sans-serif" }}>
+
+      {/* Header */}
+      <div style={{ padding:'20px 20px 0', marginBottom:'20px' }}>
+        <button onClick={() => router.push('/')} style={{ display:'flex',
+          alignItems:'center', gap:'6px', background:'none', border:'none',
+          color:T.textSec, cursor:'pointer', fontSize:'13px', padding:0,
+          marginBottom:'20px' }}>
+          {Ico.back} 戻る
+        </button>
+
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:'10px', fontWeight:700, color:T.accent,
+              letterSpacing:'.15em', marginBottom:'6px' }}>TABITOMO</div>
+            <h1 style={{ fontSize:'22px', fontWeight:700, color:T.textPri,
+              margin:'0 0 6px', lineHeight:1.3 }}>{trip.title}</h1>
+            <div style={{ fontSize:'12px', color:T.textSec }}>
+              {(trip.days||[]).length}日間
+              {trip.members ? ` · ${trip.members}名` : ''}
+              {trip.budget  ? ` · ${trip.budget}`   : ''}
+            </div>
+          </div>
+          <button onClick={() => setShowExport(true)} style={{ display:'flex',
+            alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px',
+            border:`1px solid ${T.border}`, background:T.card, color:T.textSec,
+            cursor:'pointer', fontSize:'13px', fontWeight:600, flexShrink:0 }}>
+            {Ico.export} 出力
+          </button>
+        </div>
+
+        {trip.transport && (
+          <div style={{ marginTop:'14px', display:'inline-flex', alignItems:'center',
+            gap:'6px', padding:'6px 12px', borderRadius:'20px', background:T.accentDim,
+            border:`1px solid ${T.accent}33`, fontSize:'12px', color:T.accentLt }}>
+            🚢 {trip.transport}
+          </div>
+        )}
+      </div>
+
+      {/* Days */}
+      <div style={{ padding:'0 20px 40px', maxWidth:'600px', margin:'0 auto' }}>
+        {(trip.days || []).length === 0 && (
+          <div style={{ background:T.card, border:`1px solid ${T.border}`,
+            borderRadius:'16px', padding:'32px 20px', textAlign:'center',
+            marginBottom:'12px' }}>
+            <div style={{ fontSize:'32px', marginBottom:'10px' }}>📅</div>
+            <div style={{ fontSize:'14px', color:T.textSec }}>日程がありません</div>
+            <div style={{ fontSize:'12px', color:T.textDim, marginTop:'4px' }}>
+              下のボタンから日程を追加してください
+            </div>
+          </div>
+        )}
+
+        {(trip.days || []).map((day, i) => (
+          <DayCard key={day.id} day={day}
+            accent={DAY_ACCENTS[i % DAY_ACCENTS.length]}
+            onAddEvent={ev => handleAddEvent(day.id, ev)}
+            onEditEvent={ev => handleEditEvent(day.id, ev)}
+            onDeleteEvent={id => handleDeleteEvent(day.id, id)}
+            onDeleteDay={handleDeleteDay}
+          />
+        ))}
+
+        {/* Add Day */}
+        <button onClick={() => setShowDayForm(true)} style={{
+          display:'flex', alignItems:'center', justifyContent:'center', gap:'8px',
+          width:'100%', padding:'13px', borderRadius:'12px',
+          border:`1.5px dashed ${T.border}`, background:'none',
+          color:T.textDim, cursor:'pointer', fontSize:'13px', fontWeight:600,
+          transition:'border-color .15s, color .15s' }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLElement).style.borderColor = T.accent;
+            (e.currentTarget as HTMLElement).style.color = T.accent
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLElement).style.borderColor = T.border;
+            (e.currentTarget as HTMLElement).style.color = T.textDim
+          }}>
+          {Ico.cal} 日程を追加
+        </button>
+      </div>
+
+      {showDayForm && (
+        <DayFormModal tripId={trip.id} onSave={handleAddDay}
+          onClose={() => setShowDayForm(false)}/>
+      )}
+      {showExport && (
+        <ExportModal trip={trip} onClose={() => setShowExport(false)}/>
+      )}
+    </div>
+  )
+}

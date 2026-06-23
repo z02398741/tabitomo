@@ -1,10 +1,10 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { redirect } from 'next/navigation'
-import HomeClient from '@/components/HomeClient'
+import ImportClient from '@/components/ImportClient'
 
-export default async function Home() {
+export default async function ImportPage() {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
-  return <HomeClient session={session} />
+  return <ImportClient session={session} />
 }
