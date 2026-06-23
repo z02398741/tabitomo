@@ -243,7 +243,7 @@ export default function HomeClient({ session }: { session: any }) {
   }
 
   return (
-    <div style={{ minHeight:'100vh', background:T.bg, color:T.textPri,
+    <div style={{ minHeight:'100vh', background:'transparent', color:T.textPri,
       fontFamily:"'Inter','Noto Sans JP',sans-serif" }}>
 
       {/* Header */}

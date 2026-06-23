@@ -1,13 +1,17 @@
 import { Suspense } from 'react'
 import LoginButton from '@/components/LoginButton'
 import TabitomoLogo from '@/components/logo/TabitomoLogo'
+import TechBackground from '@/app/components/TechBackground'
 
 function LoginContent() {
   return (
+    <>
+    <TechBackground />
     <div style={{
-      minHeight: '100vh', background: '#0d0f14',
+      minHeight: '100vh', background: 'transparent',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontFamily: 'Inter, sans-serif', padding: '20px',
+      position: 'relative', zIndex: 10,
     }}>
       <div style={{ width: '100%', maxWidth: '360px' }}>
         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
@@ -27,6 +31,7 @@ function LoginContent() {
         </p>
       </div>
     </div>
+    </>
   )
 }
 
