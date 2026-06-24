@@ -175,7 +175,7 @@ function EventFormModal({ event, dayId, onSave, onClose }: {
       } else {
         saved = await apiAddEvent({ day_id: dayId, time, title, type, note, alert_min: alertMin })
       }
-      onSave(saved)
+      onSave({ ...saved, tickets })
     } finally {
       setSaving(false)
     }
@@ -457,6 +457,14 @@ function EventRow({ ev, accent, isLast, onEdit, onDelete }: {
             <span style={{ display:'inline-flex', alignItems:'center', gap:'3px',
               fontSize:'9px', color:T.textDim }}>
               {Ico.bell} {ev.alert_min}分前
+            </span>
+          )}
+          {(ev.tickets?.length ?? 0) > 0 && (
+            <span style={{ display:'inline-flex', alignItems:'center', gap:'3px',
+              fontSize:'9px', color:'#a78bfa',
+              padding:'2px 6px', borderRadius:'20px',
+              background:'#a78bfa18', border:'1px solid #a78bfa30' }}>
+              🎫 {ev.tickets!.length}
             </span>
           )}
         </div>

@@ -15,6 +15,7 @@ export type Event = {
   note: string | null
   alert_min: number
   notified_at: string | null
+  tickets?: Ticket[]
 }
 
 export type Ticket = {

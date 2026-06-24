@@ -37,7 +37,10 @@ export async function getTrip(tripId: string): Promise<Trip | null> {
       *,
       days:trip_days (
         *,
-        events (*)
+        events (
+          *,
+          tickets (id, name)
+        )
       )
     `)
     .eq('id', tripId)
