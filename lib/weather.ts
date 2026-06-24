@@ -56,20 +56,37 @@ function describe(code: number): { emoji: string; label: string } {
 export async function geocode(
   query: string
 ): Promise<{ name: string; lat: number; lon: number } | null> {
-  const url =
-    `https://geocoding-api.open-meteo.com/v1/search` +
-    `?name=${encodeURIComponent(query)}&count=1&language=ja&format=json`
+  // 1. Open-Meteo geocoding (GeoNames-based)
   try {
+    const url =
+      `https://geocoding-api.open-meteo.com/v1/search` +
+      `?name=${encodeURIComponent(query)}&count=1&language=ja&format=json`
     const res = await fetch(url)
-    if (!res.ok) return null
-    const data = await res.json()
-    const r = data.results?.[0]
-    if (!r) return null
-    return { name: r.name, lat: r.latitude, lon: r.longitude }
+    if (res.ok) {
+      const data = await res.json()
+      const r = data.results?.[0]
+      if (r) return { name: r.name, lat: r.latitude, lon: r.longitude }
+    }
   } catch (e) {
-    console.error('geocode error:', e)
-    return null
+    console.error('open-meteo geocode error:', e)
   }
+
+  // 2. Nominatim (OpenStreetMap) fallback — better coverage for Japanese islands/towns
+  try {
+    const url =
+      `https://nominatim.openstreetmap.org/search` +
+      `?q=${encodeURIComponent(query)}&format=json&limit=1&accept-language=ja`
+    const res = await fetch(url, { headers: { 'User-Agent': 'tabitomo-app/1.0' } })
+    if (res.ok) {
+      const data = await res.json()
+      const r = data[0]
+      if (r) return { name: r.display_name.split(',')[0], lat: parseFloat(r.lat), lon: parseFloat(r.lon) }
+    }
+  } catch (e) {
+    console.error('nominatim geocode error:', e)
+  }
+
+  return null
 }
 
 export async function getWeather(destination: string): Promise<WeatherResult> {
