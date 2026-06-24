@@ -13,6 +13,8 @@ export type Event = {
   title: string
   type: 'transport' | 'gather' | 'activity' | 'meal' | 'stay' | 'free'
   note: string | null
+  location: string | null
+  cost: number | null
   alert_min: number
   notified_at: string | null
   tickets?: Ticket[]

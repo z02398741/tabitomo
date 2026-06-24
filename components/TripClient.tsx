@@ -138,6 +138,8 @@ function EventFormModal({ event, dayId, onSave, onClose }: {
   const [title,     setTitle]     = useState(event?.title    || '')
   const [type,      setType]      = useState<Event['type']>(event?.type || 'activity')
   const [note,      setNote]      = useState(event?.note     || '')
+  const [location,  setLocation]  = useState(event?.location || '')
+  const [cost,      setCost]      = useState(event?.cost != null ? String(event.cost) : '')
   const [alertMin,  setAlertMin]  = useState(event?.alert_min ?? 0)
   const [saving,    setSaving]    = useState(false)
   const [tickets,   setTickets]   = useState<any[]>([])
@@ -178,11 +180,16 @@ function EventFormModal({ event, dayId, onSave, onClose }: {
     if (!title.trim()) return
     setSaving(true)
     try {
+      const payload = {
+        time, title, type, note, alert_min: alertMin,
+        location: location.trim() || null,
+        cost: cost !== '' ? parseFloat(cost) : null,
+      }
       let saved
       if (event?.id) {
-        saved = await apiUpdateEvent(event.id, { time, title, type, note, alert_min: alertMin })
+        saved = await apiUpdateEvent(event.id, payload)
       } else {
-        saved = await apiAddEvent({ day_id: dayId, time, title, type, note, alert_min: alertMin })
+        saved = await apiAddEvent({ day_id: dayId, ...payload })
       }
       onSave({ ...saved, tickets })
     } finally {
@@ -223,6 +230,21 @@ function EventFormModal({ event, dayId, onSave, onClose }: {
           color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>タイトル *</label>
         <input value={title} onChange={e=>setTitle(e.target.value)}
           placeholder="例：竹芝ターミナル 集合" style={inputSt}/>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 110px', gap:'12px', marginBottom:'14px' }}>
+        <div>
+          <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+            color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>📍 場所</label>
+          <input value={location} onChange={e=>setLocation(e.target.value)}
+            placeholder="例：竹芝ターミナル" style={inputSt}/>
+        </div>
+        <div>
+          <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+            color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>💰 費用 (¥)</label>
+          <input type="number" min="0" value={cost} onChange={e=>setCost(e.target.value)}
+            placeholder="0" style={inputSt}/>
+        </div>
       </div>
 
       <div style={{ marginBottom:'14px' }}>
@@ -547,8 +569,16 @@ function EventRow({ ev, accent, isLast, onEdit, onDelete }: {
           )}
         </div>
         <div style={{ fontSize:'14px', fontWeight:600, color:T.textPri,
-          marginBottom: ev.note ? '3px' : 0 }}>{ev.title}</div>
+          marginBottom:'2px' }}>{ev.title}</div>
         {ev.note && <div style={{ fontSize:'11px', color:T.textSec }}>{ev.note}</div>}
+        {ev.location && (
+          <div style={{ fontSize:'11px', color:T.textSec }}>📍 {ev.location}</div>
+        )}
+        {ev.cost != null && ev.cost > 0 && (
+          <div style={{ fontSize:'11px', color:'#66bb6a', fontWeight:700 }}>
+            ¥{ev.cost.toLocaleString()}
+          </div>
+        )}
       </div>
       <div style={{ display:'flex', gap:'4px', flexShrink:0,
         opacity: hov ? 1 : 0, transition:'opacity .15s' }}>
@@ -588,6 +618,8 @@ function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver,
   const [editingEvent,  setEditingEvent]  = useState<Event | undefined>()
   const [showDayEdit,   setShowDayEdit]   = useState(false)
   const events = [...(day.events ?? [])].sort((a, b) => a.time.localeCompare(b.time))
+  const hasCost = events.some(ev => ev.cost != null && ev.cost > 0)
+  const totalCost = hasCost ? events.reduce((sum, ev) => sum + (ev.cost ?? 0), 0) : 0
 
   return (
     <>
@@ -654,12 +686,21 @@ function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver,
                 「追加」からイベントを登録してください
               </div>
             ) : (
-              events.map((ev, i) => (
-                <EventRow key={ev.id} ev={ev} accent={accent}
-                  isLast={i === events.length - 1}
-                  onEdit={e => { setEditingEvent(e); setShowEventForm(true) }}
-                  onDelete={onDeleteEvent}/>
-              ))
+              <>
+                {events.map((ev, i) => (
+                  <EventRow key={ev.id} ev={ev} accent={accent}
+                    isLast={i === events.length - 1}
+                    onEdit={e => { setEditingEvent(e); setShowEventForm(true) }}
+                    onDelete={onDeleteEvent}/>
+                ))}
+                {hasCost && (
+                  <div style={{ marginTop:'12px', paddingTop:'10px',
+                    borderTop:`1px solid ${T.border}`,
+                    textAlign:'right', fontSize:'12px', fontWeight:700, color:'#66bb6a' }}>
+                    小計 ¥{totalCost.toLocaleString()}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -995,6 +1036,10 @@ export default function TripClient({ trip: initialTrip, session }: {
     setMembers(prev => prev.filter(m => m.userId !== userId))
   }
 
+  const allEvents = (trip.days || []).flatMap(d => d.events || [])
+  const hasTripCost = allEvents.some(ev => ev.cost != null && ev.cost > 0)
+  const tripTotalCost = hasTripCost ? allEvents.reduce((sum, ev) => sum + (ev.cost ?? 0), 0) : 0
+
   return (
     <div style={{ minHeight:'100vh', background:'transparent', color:T.textPri,
       fontFamily:"'Inter','Noto Sans JP',sans-serif" }}>
@@ -1064,11 +1109,22 @@ export default function TripClient({ trip: initialTrip, session }: {
           </div>
         </div>
 
-        {trip.transport && (
-          <div style={{ marginTop:'14px', display:'inline-flex', alignItems:'center',
-            gap:'6px', padding:'6px 12px', borderRadius:'20px', background:T.accentDim,
-            border:`1px solid ${T.accent}33`, fontSize:'12px', color:T.accentLt }}>
-            🚢 {trip.transport}
+        {(trip.transport || hasTripCost) && (
+          <div style={{ marginTop:'14px', display:'flex', gap:'8px', flexWrap:'wrap' }}>
+            {trip.transport && (
+              <div style={{ display:'inline-flex', alignItems:'center',
+                gap:'6px', padding:'6px 12px', borderRadius:'20px', background:T.accentDim,
+                border:`1px solid ${T.accent}33`, fontSize:'12px', color:T.accentLt }}>
+                🚢 {trip.transport}
+              </div>
+            )}
+            {hasTripCost && (
+              <div style={{ display:'inline-flex', alignItems:'center',
+                gap:'6px', padding:'6px 12px', borderRadius:'20px', background:'#66bb6a18',
+                border:`1px solid #66bb6a33`, fontSize:'12px', color:'#66bb6a' }}>
+                💰 合計 ¥{tripTotalCost.toLocaleString()}
+              </div>
+            )}
           </div>
         )}
       </div>

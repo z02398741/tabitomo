@@ -31,6 +31,31 @@ const Ico = {
   copy:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
 }
 
+// ── Trip status helpers ────────────────────────────────────────
+const STATUS_CFG = {
+  planning: { label: '計画中',   color: '#4a5170', bg: '#252a3a55', border: '#4a517044' },
+  upcoming: { label: '即将出發', color: '#4ecdc4', bg: '#4ecdc418', border: '#4ecdc433' },
+  active:   { label: '旅行中',   color: '#66bb6a', bg: '#66bb6a18', border: '#66bb6a33' },
+  past:     { label: '終了',     color: '#4a5170', bg: '#252a3a55', border: '#4a517044' },
+} as const
+
+function tripStatus(days?: { date: string | null }[]) {
+  const dates = (days ?? []).filter(d => d.date).map(d => d.date!).sort()
+  if (!dates.length) return 'planning' as const
+  const today = new Date().toISOString().split('T')[0]
+  if (dates[dates.length - 1] < today) return 'past' as const
+  if (dates[0] > today) return 'upcoming' as const
+  return 'active' as const
+}
+
+function daysUntil(days?: { date: string | null }[]) {
+  const dates = (days ?? []).filter(d => d.date).map(d => d.date!).sort()
+  if (!dates.length) return null
+  const today = new Date().toISOString().split('T')[0]
+  if (dates[0] <= today) return null
+  return Math.ceil((new Date(dates[0]).getTime() - new Date(today).getTime()) / 86400000)
+}
+
 // ── New Trip Modal ─────────────────────────────────────────────
 function NewTripModal({ onSave, onClose }: {
   onSave: (trip: Partial<Trip>) => void
@@ -130,6 +155,8 @@ function TripCard({ trip, onClick, onDelete, onDuplicate }: {
 }) {
   const [hov, setHov] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const status   = tripStatus(trip.days)
+  const countdown = daysUntil(trip.days)
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -169,6 +196,19 @@ function TripCard({ trip, onClick, onDelete, onDuplicate }: {
             {trip.members ? `${trip.members}名` : ''}
             {trip.budget ? ` · ${trip.budget}` : ''}
             {trip.transport ? ` · ${trip.transport}` : ''}
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:'6px', marginTop:'6px', flexWrap:'wrap' }}>
+            <span style={{ fontSize:'9px', fontWeight:700, padding:'2px 8px',
+              borderRadius:'20px', letterSpacing:'.04em',
+              background: STATUS_CFG[status].bg, color: STATUS_CFG[status].color,
+              border:`1px solid ${STATUS_CFG[status].border}` }}>
+              {STATUS_CFG[status].label}
+            </span>
+            {countdown != null && (
+              <span style={{ fontSize:'11px', fontWeight:700, color:'#4ecdc4' }}>
+                あと{countdown}日
+              </span>
+            )}
           </div>
         </div>
         {!confirmDelete ? (
