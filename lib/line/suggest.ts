@@ -4,7 +4,7 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import { replyMessage, pushMessage, textMsg, quickReplyMsg } from '@/lib/line/reply'
+import { replyMessage, pushMessage, textMsg } from '@/lib/line/reply'
 
 function getAdmin() {
   return createClient(
@@ -192,44 +192,87 @@ export async function saveTrip(trip: any, userId: string): Promise<string> {
   return newTrip.id
 }
 
-// ── Step handlers ──────────────────────────────────────────────
-function qr(text: string, items: Array<{ label: string; text: string }>) {
-  return quickReplyMsg(text, items)
+// ── Step Flex Message builders ─────────────────────────────────
+// All step selectors use postback actions so they work in group chats
+// without requiring @mention. Only free-text note input remains text-based.
+
+function flexBtn(label: string, data: string, primary = false, color = '#6c8ef5'): object {
+  return {
+    type: 'button',
+    style: primary ? 'primary' : 'secondary',
+    ...(primary ? { color } : {}),
+    action: { type: 'postback', label, data, displayText: label },
+  }
 }
 
-export function makeDaysQr() {
-  return qr('📅 何日間の旅行ですか？', [
-    { label: '2日間', text: '2' },
-    { label: '3日間', text: '3' },
-    { label: '4日間', text: '4' },
-    { label: '5日間', text: '5' },
-    { label: '7日間', text: '7' },
-  ])
+function flexBubble(bodyText: string, footerBtns: object[], altText: string): object {
+  return {
+    type: 'flex',
+    altText,
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [{ type: 'text', text: bodyText, weight: 'bold', size: 'md', wrap: true }],
+      },
+      footer: { type: 'box', layout: 'vertical', spacing: 'sm', contents: footerBtns },
+    },
+  }
 }
 
-export function makeMembersQr() {
-  return qr('👥 人数は？（スキップ可）', [
-    { label: '1人', text: '1' },
-    { label: '2人', text: '2' },
-    { label: '3人', text: '3' },
-    { label: '4人', text: '4' },
-    { label: '5人以上', text: '5' },
-    { label: 'スキップ', text: 'スキップ' },
-  ])
+export function makeDaysFlex(): object {
+  return flexBubble('📅 何日間の旅行ですか？', [
+    flexBtn('2日間', 'suggest:step:days:2', true),
+    flexBtn('3日間', 'suggest:step:days:3'),
+    flexBtn('4日間', 'suggest:step:days:4'),
+    flexBtn('5日間', 'suggest:step:days:5'),
+    flexBtn('7日間', 'suggest:step:days:7'),
+  ], '何日間の旅行ですか？')
 }
 
-export function makeBudgetQr() {
-  return qr('💰 予算感は？', [
-    { label: '節約', text: 'budget' },
-    { label: '普通', text: 'moderate' },
-    { label: '豪華', text: 'luxury' },
-  ])
+export function makeMembersFlex(): object {
+  return flexBubble('👥 人数は？（スキップ可）', [
+    flexBtn('1人', 'suggest:step:members:1', true),
+    flexBtn('2人', 'suggest:step:members:2'),
+    flexBtn('3人', 'suggest:step:members:3'),
+    flexBtn('4人', 'suggest:step:members:4'),
+    flexBtn('5人以上', 'suggest:step:members:5'),
+    flexBtn('スキップ', 'suggest:step:members:skip'),
+  ], '人数は？')
 }
 
-export function makeNoteMsg() {
-  return qr('📝 その他の希望があれば教えてください（スキップ可）\n例：子連れOKな行程で / 海が見えるレストランを入れてほしい', [
-    { label: 'スキップ', text: 'スキップ' },
-  ])
+export function makeBudgetFlex(): object {
+  return flexBubble('💰 予算感は？', [
+    flexBtn('💴 節約', 'suggest:step:budget:budget', true),
+    flexBtn('😊 普通', 'suggest:step:budget:moderate'),
+    flexBtn('✨ 豪華', 'suggest:step:budget:luxury'),
+  ], '予算感は？')
+}
+
+export function makeNoteMsg(): object {
+  return {
+    type: 'flex',
+    altText: 'その他の希望があれば教えてください（スキップ可）',
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: '📝 その他の希望があれば入力してください', weight: 'bold', size: 'md', wrap: true },
+          { type: 'text', text: '例：子連れOK / 海が見えるレストランを入れてほしい', size: 'sm', color: '#aaaaaa', wrap: true, margin: 'sm' },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'button', style: 'secondary', action: { type: 'postback', label: 'スキップ', data: 'suggest:step:note:skip', displayText: 'スキップ' } },
+        ],
+      },
+    },
+  }
 }
 
 export function makeStartDateFlex(): object {
@@ -395,7 +438,7 @@ export async function handleSuggestFlow(
   if (!initial.days) {
     initial.step = 'days'
     await saveSuggestSession(groupId, userId, initial)
-    await replyMessage(replyToken, [makeDaysQr()])
+    await replyMessage(replyToken, [makeDaysFlex()])
     return true
   }
   // Both destination and days known — go to startDate
@@ -405,7 +448,7 @@ export async function handleSuggestFlow(
   return true
 }
 
-async function processStep(
+export async function processStep(
   session: SuggestSession,
   text: string,
   groupId: string,
@@ -423,14 +466,14 @@ async function processStep(
     }
     const next = { ...session, destination: dest, step: 'days' as SuggestStep }
     await saveSuggestSession(groupId, userId, next)
-    await replyMessage(replyToken, [makeDaysQr()])
+    await replyMessage(replyToken, [makeDaysFlex()])
     return true
   }
 
   if (session.step === 'days') {
     const n = parseInt(trim)
     if (isNaN(n) || n < 1 || n > 14) {
-      await replyMessage(replyToken, [makeDaysQr()])
+      await replyMessage(replyToken, [makeDaysFlex()])
       return true
     }
     const next = { ...session, days: n, step: 'startDate' as SuggestStep }
@@ -444,7 +487,7 @@ async function processStep(
     if (/スキップ|skip/i.test(trim)) {
       const next = { ...session, startDate: undefined, step: 'members' as SuggestStep }
       await saveSuggestSession(groupId, userId, next)
-      await replyMessage(replyToken, [makeMembersQr()])
+      await replyMessage(replyToken, [makeMembersFlex()])
     } else {
       await replyMessage(replyToken, [makeStartDateFlex()])
     }
@@ -459,7 +502,7 @@ async function processStep(
     }
     const next = { ...session, members, step: 'budget' as SuggestStep }
     await saveSuggestSession(groupId, userId, next)
-    await replyMessage(replyToken, [makeBudgetQr()])
+    await replyMessage(replyToken, [makeBudgetFlex()])
     return true
   }
 
@@ -515,7 +558,31 @@ async function processStep(
   return false
 }
 
-// ── Postback handlers (datetimepicker + confirm Flex buttons) ──
+// ── Postback handlers (step Flex buttons + datetimepicker + confirm) ──
+
+/**
+ * Routes postback events from step Flex buttons (days / members / budget / note-skip).
+ * postbackData format: "suggest:step:<step>:<value>"
+ */
+export async function handleSuggestStepPostback(
+  postbackData: string,
+  groupId: string,
+  userId: string,
+  replyToken: string,
+): Promise<void> {
+  const parts = postbackData.split(':')   // ['suggest','step','days','3']
+  if (parts.length < 4) return
+  const step = parts[2]
+  const value = parts[3]
+
+  const session = await getSuggestSession(groupId, userId)
+  if (!session || session.step !== step) return
+
+  const syntheticText = value === 'skip' ? 'スキップ' : value
+  await processStep(session, syntheticText, groupId, userId, replyToken, groupId || userId)
+}
+
+
 
 /**
  * Called when LINE fires a postback event from the datetimepicker or skip button.
@@ -531,7 +598,7 @@ export async function handleSuggestDatePostback(
   if (!session || session.step !== 'startDate') return
   const next = { ...session, startDate: date || undefined, step: 'members' as SuggestStep }
   await saveSuggestSession(groupId, userId, next)
-  await replyMessage(replyToken, [makeMembersQr()])
+  await replyMessage(replyToken, [makeMembersFlex()])
 }
 
 /**

@@ -10,7 +10,7 @@ import { executeDelete } from '@/lib/rules/delete'
 import { replyMessage, pushMessage, textMsg, quickReplyMsg } from '@/lib/line/reply'
 import { getWeather } from '@/lib/weather'
 import { confirmationText, successText } from '@/lib/line/messages'
-import { handleSuggestFlow, getSuggestSession, handleSuggestDatePostback, handleSuggestConfirm } from '@/lib/line/suggest'
+import { handleSuggestFlow, getSuggestSession, handleSuggestDatePostback, handleSuggestConfirm, handleSuggestStepPostback } from '@/lib/line/suggest'
 import type { ParsedAction } from '@/types/action'
 
 function getAdmin() {
@@ -695,6 +695,8 @@ export async function POST(req: NextRequest) {
       } else if (pbData.startsWith('suggest:confirm:')) {
         const confirmAction = pbData.replace('suggest:confirm:', '') as 'save' | 'redo' | 'cancel'
         await handleSuggestConfirm(confirmAction, pbGroupId, pbUserId, pbReplyToken)
+      } else if (pbData.startsWith('suggest:step:')) {
+        await handleSuggestStepPostback(pbData, pbGroupId, pbUserId, pbReplyToken)
       }
       continue
     }
