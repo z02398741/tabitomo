@@ -31,15 +31,6 @@ async function apiReorderDays(ids: string[]) {
   const res = await fetch('/api/days/reorder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) })
   if (!res.ok) throw new Error(await res.text())
 }
-async function apiUpdateDay(id: string, body: object) {
-  const res = await fetch(`/api/days/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
-}
-async function apiDeleteTicket(id: string) {
-  const res = await fetch(`/api/tickets/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await res.text())
-}
 import type { Trip, TripDay, Event } from '@/types'
 import type { DayWeather } from '@/lib/weather'
 
@@ -280,25 +271,15 @@ function EventFormModal({ event, dayId, onSave, onClose }: {
             🎫 チケット・票券
           </label>
           {tickets.map(t => (
-            <div key={t.id} style={{
+            <div key={t.id} onClick={() => openTicket(t.id)} style={{
               display:'flex', alignItems:'center', gap:'8px',
               padding:'8px 12px', borderRadius:'8px', marginBottom:'6px',
               background:'#13161e', border:`1px solid ${T.border}`,
+              cursor:'pointer',
             }}>
               <span style={{ fontSize:'14px' }}>🎫</span>
-              <span onClick={() => openTicket(t.id)}
-                style={{ fontSize:'13px', color:T.accentLt, flex:1, cursor:'pointer' }}>{t.name}</span>
-              <span onClick={() => openTicket(t.id)}
-                style={{ fontSize:'11px', color:T.textDim, cursor:'pointer' }}>開く →</span>
-              <button onClick={async () => {
-                await apiDeleteTicket(t.id)
-                setTickets(p => p.filter(x => x.id !== t.id))
-              }} style={{ padding:'4px', borderRadius:'6px',
-                border:`1px solid ${T.border}`, background:'none',
-                color:'#f06292', cursor:'pointer', display:'flex',
-                alignItems:'center', flexShrink:0 }}>
-                {Ico.trash}
-              </button>
+              <span style={{ fontSize:'13px', color:T.accentLt, flex:1 }}>{t.name}</span>
+              <span style={{ fontSize:'11px', color:T.textDim }}>開く →</span>
             </div>
           ))}
           <label style={{
@@ -388,65 +369,6 @@ function DayFormModal({ tripId, onSave, onClose }: {
           color:'#fff', cursor: label.trim() && !saving ? 'pointer' : 'default',
           fontSize:'13px', fontWeight:600 }}>
           {saving ? '追加中...' : '追加'}
-        </button>
-      </div>
-    </Modal>
-  )
-}
-
-// ── Day Edit Modal ─────────────────────────────────────────────
-function DayEditModal({ day, onSave, onClose }: {
-  day: TripDay
-  onSave: (day: TripDay) => void
-  onClose: () => void
-}) {
-  const [label,  setLabel]  = useState(day.label)
-  const [date,   setDate]   = useState(day.date || '')
-  const [saving, setSaving] = useState(false)
-
-  const save = async () => {
-    if (!label.trim()) return
-    setSaving(true)
-    try {
-      const updated = await apiUpdateDay(day.id, { label: label.trim(), date: date || null })
-      onSave(updated)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Modal onClose={onClose}>
-      <div style={{ display:'flex', justifyContent:'space-between',
-        alignItems:'center', marginBottom:'20px' }}>
-        <span style={{ fontSize:'16px', fontWeight:700, color:T.textPri }}>日程を編集</span>
-        <button onClick={onClose} style={{ background:'none', border:'none',
-          color:T.textDim, cursor:'pointer', fontSize:'20px' }}>×</button>
-      </div>
-
-      <div style={{ marginBottom:'14px' }}>
-        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
-          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>ラベル *</label>
-        <input value={label} onChange={e=>setLabel(e.target.value)}
-          placeholder="例：Day1｜7/18（五）" style={inputSt}/>
-      </div>
-
-      <div style={{ marginBottom:'20px' }}>
-        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
-          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>日付</label>
-        <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inputSt}/>
-      </div>
-
-      <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end' }}>
-        <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:'10px',
-          border:`1px solid ${T.border}`, background:'none', cursor:'pointer',
-          fontSize:'13px', color:T.textSec }}>キャンセル</button>
-        <button onClick={save} disabled={!label.trim() || saving} style={{
-          padding:'9px 20px', borderRadius:'10px', border:'none',
-          background: label.trim() && !saving ? T.accent : T.textDim+'44',
-          color:'#fff', cursor: label.trim() && !saving ? 'pointer' : 'default',
-          fontSize:'13px', fontWeight:600 }}>
-          {saving ? '保存中...' : '保存'}
         </button>
       </div>
     </Modal>
@@ -613,12 +535,10 @@ function DayCard({ day, accent, weather, isDragging, isDragOver, onDragStart, on
   onEditEvent: (ev: Event) => void
   onDeleteEvent: (id: string) => void
   onDeleteDay: (id: string) => void
-  onEditDay: (day: TripDay) => void
 }) {
   const [open,          setOpen]          = useState(true)
   const [showEventForm, setShowEventForm] = useState(false)
   const [editingEvent,  setEditingEvent]  = useState<Event | undefined>()
-  const [showDayEdit,   setShowDayEdit]   = useState(false)
   const events = [...(day.events ?? [])].sort((a, b) => a.time.localeCompare(b.time))
   const hasCost = events.some(ev => ev.cost != null && ev.cost > 0)
   const totalCost = hasCost ? events.reduce((sum, ev) => sum + (ev.cost ?? 0), 0) : 0
@@ -678,12 +598,6 @@ function DayCard({ day, accent, weather, isDragging, isDragOver, onDragStart, on
               alignItems:'center', gap:'4px', fontSize:'11px', fontWeight:700 }}>
               {Ico.plus} 追加
             </button>
-            <button onClick={() => setShowDayEdit(true)} style={{
-              padding:'6px', borderRadius:'8px',
-              border:`1px solid ${T.border}`, background:'none',
-              color:T.textDim, cursor:'pointer', display:'flex', alignItems:'center' }}>
-              {Ico.edit}
-            </button>
             <button onClick={() => onDeleteDay(day.id)} style={{
               padding:'6px', borderRadius:'8px',
               border:`1px solid ${T.border}`, background:'none',
@@ -740,16 +654,6 @@ function DayCard({ day, accent, weather, isDragging, isDragOver, onDragStart, on
           }}
         />
       )}
-      {showDayEdit && (
-        <DayEditModal
-          day={day}
-          onSave={updated => {
-            onEditDay(updated)
-            setShowDayEdit(false)
-          }}
-          onClose={() => setShowDayEdit(false)}
-        />
-      )}
     </>
   )
 }
@@ -768,7 +672,6 @@ function TripInfoModal({ trip, onSave, onClose }: {
   const [saving,      setSaving]      = useState(false)
 
   const save = async () => {
-    if (!title.trim()) return
     setSaving(true)
     try {
       const res = await fetch(`/api/trips/${trip.id}`, {
@@ -797,13 +700,6 @@ function TripInfoModal({ trip, onSave, onClose }: {
         <span style={{ fontSize:'16px', fontWeight:700, color:T.textPri }}>旅行情報を編集</span>
         <button onClick={onClose} style={{ background:'none', border:'none',
           color:T.textDim, cursor:'pointer', fontSize:'20px' }}>×</button>
-      </div>
-
-      <div style={{ marginBottom:'14px' }}>
-        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
-          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>✏️ タイトル *</label>
-        <input value={title} onChange={e => setTitle(e.target.value)}
-          placeholder="例：伊豆大島 3天2夜" style={inputSt}/>
       </div>
 
       <div style={{ marginBottom:'14px' }}>
@@ -839,10 +735,10 @@ function TripInfoModal({ trip, onSave, onClose }: {
         <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:'10px',
           border:`1px solid ${T.border}`, background:'none', cursor:'pointer',
           fontSize:'13px', color:T.textSec }}>キャンセル</button>
-        <button onClick={save} disabled={!title.trim() || saving} style={{
+        <button onClick={save} disabled={saving} style={{
           padding:'9px 20px', borderRadius:'10px', border:'none',
-          background: title.trim() && !saving ? T.accent : T.textDim+'44',
-          color:'#fff', cursor: title.trim() && !saving ? 'pointer' : 'default',
+          background: saving ? T.textDim+'44' : T.accent,
+          color:'#fff', cursor: saving ? 'default' : 'pointer',
           fontSize:'13px', fontWeight:600 }}>
           {saving ? '保存中...' : '保存'}
         </button>
@@ -1035,10 +931,6 @@ export default function TripClient({ trip: initialTrip, session }: {
     updateDays((trip.days || []).filter(d => d.id !== dayId))
   }
 
-  const handleEditDay = (day: TripDay) => {
-    updateDays((trip.days || []).map(d => d.id === day.id ? { ...d, ...day } : d))
-  }
-
   const handleDragStart = (idx: number) => setDragIdx(idx)
   const handleDragEnd   = () => { setDragIdx(null); setDragOverIdx(null) }
   const handleDragOver  = (e: React.DragEvent, idx: number) => { e.preventDefault(); setDragOverIdx(idx) }
@@ -1205,7 +1097,6 @@ export default function TripClient({ trip: initialTrip, session }: {
             onEditEvent={ev => handleEditEvent(day.id, ev)}
             onDeleteEvent={id => handleDeleteEvent(day.id, id)}
             onDeleteDay={handleDeleteDay}
-            onEditDay={handleEditDay}
           />
         ))}
 
