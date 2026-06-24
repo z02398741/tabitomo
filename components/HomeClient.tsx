@@ -61,10 +61,11 @@ function NewTripModal({ onSave, onClose }: {
   onSave: (trip: Partial<Trip>) => void
   onClose: () => void
 }) {
-  const [title,     setTitle]     = useState('')
-  const [members,   setMembers]   = useState('')
-  const [budget,    setBudget]    = useState('')
-  const [transport, setTransport] = useState('')
+  const [title,       setTitle]       = useState('')
+  const [members,     setMembers]     = useState('')
+  const [budget,      setBudget]      = useState('')
+  const [transport,   setTransport]   = useState('')
+  const [destination, setDestination] = useState('')
 
   const inputSt: React.CSSProperties = {
     width: '100%', padding: '10px 12px', borderRadius: '9px',
@@ -114,11 +115,18 @@ function NewTripModal({ onSave, onClose }: {
           </div>
         </div>
 
-        <div style={{ marginBottom:'20px' }}>
+        <div style={{ marginBottom:'14px' }}>
           <label style={{ display:'block', fontSize:'11px', fontWeight:700,
             color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>交通手段</label>
           <input value={transport} onChange={e=>setTransport(e.target.value)}
             placeholder="例：竹芝⇄大島（高速船）" style={inputSt}/>
+        </div>
+
+        <div style={{ marginBottom:'20px' }}>
+          <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+            color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>🌤 目的地（天気予報用）</label>
+          <input value={destination} onChange={e=>setDestination(e.target.value)}
+            placeholder="例：伊豆大島・沖縄・京都" style={inputSt}/>
         </div>
 
         <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end' }}>
@@ -132,6 +140,7 @@ function NewTripModal({ onSave, onClose }: {
               members: members ? parseInt(members) : null,
               budget: budget.trim() || null,
               transport: transport.trim() || null,
+              destination: destination.trim() || null,
             })}
             disabled={!title.trim()}
             style={{ padding:'9px 20px', borderRadius:'10px', border:'none',

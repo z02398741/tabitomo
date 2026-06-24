@@ -41,6 +41,7 @@ async function apiDeleteTicket(id: string) {
   if (!res.ok) throw new Error(await res.text())
 }
 import type { Trip, TripDay, Event } from '@/types'
+import type { DayWeather } from '@/lib/weather'
 
 const T = {
   bg:       '#0d0f14',
@@ -598,9 +599,10 @@ function EventRow({ ev, accent, isLast, onEdit, onDelete }: {
 }
 
 // ── Day Card ───────────────────────────────────────────────────
-function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver, onDrop, onDragEnd, onAddEvent, onEditEvent, onDeleteEvent, onDeleteDay, onEditDay }: {
+function DayCard({ day, accent, weather, isDragging, isDragOver, onDragStart, onDragOver, onDrop, onDragEnd, onAddEvent, onEditEvent, onDeleteEvent, onDeleteDay, onEditDay }: {
   day: TripDay & { events?: Event[] }
   accent: string
+  weather?: DayWeather
   isDragging: boolean
   isDragOver: boolean
   onDragStart: () => void
@@ -648,7 +650,20 @@ function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver,
             <div style={{ flex:1 }}>
               <div style={{ fontSize:'13px', fontWeight:700, color:T.textPri,
                 marginBottom:'2px' }}>{day.label}</div>
-              {day.date && <div style={{ fontSize:'11px', color:T.textDim }}>{day.date}</div>}
+              <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
+                {day.date && <span style={{ fontSize:'11px', color:T.textDim }}>{day.date}</span>}
+                {weather && (
+                  <span title={weather.label} style={{ display:'inline-flex',
+                    alignItems:'center', gap:'4px', fontSize:'11px', color:T.textSec,
+                    padding:'1px 7px', borderRadius:'20px',
+                    background:'#6c8ef518', border:`1px solid ${T.border}` }}>
+                    {weather.emoji} {weather.tmin}〜{weather.tmax}℃
+                    {weather.pop > 0 && (
+                      <span style={{ color:'#6c8ef5' }}>☔{weather.pop}%</span>
+                    )}
+                  </span>
+                )}
+              </div>
             </div>
             <span style={{ fontSize:'10px', color:T.textDim }}>{events.length}件</span>
             <span style={{ color:T.textDim, fontSize:'14px',
@@ -742,14 +757,15 @@ function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver,
 // ── Trip Info Modal ────────────────────────────────────────────
 function TripInfoModal({ trip, onSave, onClose }: {
   trip: Trip
-  onSave: (patch: { title: string; members: number | null; budget: string | null; transport: string | null }) => void
+  onSave: (patch: { title: string; members: number | null; budget: string | null; transport: string | null; destination: string | null }) => void
   onClose: () => void
 }) {
-  const [title,     setTitle]     = useState(trip.title)
-  const [members,   setMembers]   = useState(trip.members != null ? String(trip.members) : '')
-  const [budget,    setBudget]    = useState(trip.budget    ?? '')
-  const [transport, setTransport] = useState(trip.transport ?? '')
-  const [saving,    setSaving]    = useState(false)
+  const [title,       setTitle]       = useState(trip.title)
+  const [members,     setMembers]     = useState(trip.members != null ? String(trip.members) : '')
+  const [budget,      setBudget]      = useState(trip.budget    ?? '')
+  const [transport,   setTransport]   = useState(trip.transport ?? '')
+  const [destination, setDestination] = useState(trip.destination ?? '')
+  const [saving,      setSaving]      = useState(false)
 
   const save = async () => {
     if (!title.trim()) return
@@ -759,15 +775,16 @@ function TripInfoModal({ trip, onSave, onClose }: {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title:     title.trim(),
-          members:   members   ? parseInt(members)   : null,
-          budget:    budget.trim()    || null,
-          transport: transport.trim() || null,
+          title:       title.trim(),
+          members:     members   ? parseInt(members)   : null,
+          budget:      budget.trim()    || null,
+          transport:   transport.trim() || null,
+          destination: destination.trim() || null,
         }),
       })
       if (!res.ok) throw new Error(await res.text())
       const data = await res.json()
-      onSave({ title: data.title, members: data.members, budget: data.budget, transport: data.transport })
+      onSave({ title: data.title, members: data.members, budget: data.budget, transport: data.transport, destination: data.destination })
     } finally {
       setSaving(false)
     }
@@ -804,11 +821,18 @@ function TripInfoModal({ trip, onSave, onClose }: {
           placeholder="例：5万円" style={inputSt}/>
       </div>
 
-      <div style={{ marginBottom:'24px' }}>
+      <div style={{ marginBottom:'14px' }}>
         <label style={{ display:'block', fontSize:'11px', fontWeight:700,
           color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>🚢 交通手段</label>
         <input value={transport} onChange={e => setTransport(e.target.value)}
           placeholder="例：飛行機・高速バス" style={inputSt}/>
+      </div>
+
+      <div style={{ marginBottom:'24px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>🌤 目的地（天気予報用）</label>
+        <input value={destination} onChange={e => setDestination(e.target.value)}
+          placeholder="例：伊豆大島・沖縄・京都" style={inputSt}/>
       </div>
 
       <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end' }}>
@@ -951,6 +975,23 @@ export default function TripClient({ trip: initialTrip, session }: {
   const [showTripInfo,  setShowTripInfo]  = useState(false)
   const [dragIdx,     setDragIdx]     = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+  const [weatherDays, setWeatherDays] = useState<Record<string, DayWeather>>({})
+  const [weatherLoc,  setWeatherLoc]  = useState<string | null>(null)
+
+  useEffect(() => {
+    const dest = trip.destination
+    if (!dest) { setWeatherDays({}); setWeatherLoc(null); return }
+    let cancelled = false
+    fetch(`/api/weather?q=${encodeURIComponent(dest)}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (cancelled || !data) return
+        setWeatherDays(data.days ?? {})
+        setWeatherLoc(data.location?.name ?? null)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [trip.destination])
 
   const updateDays = (days: any[]) => setTrip(t => ({ ...t, days }))
 
@@ -1109,8 +1150,15 @@ export default function TripClient({ trip: initialTrip, session }: {
           </div>
         </div>
 
-        {(trip.transport || hasTripCost) && (
+        {(trip.transport || hasTripCost || weatherLoc) && (
           <div style={{ marginTop:'14px', display:'flex', gap:'8px', flexWrap:'wrap' }}>
+            {weatherLoc && (
+              <div style={{ display:'inline-flex', alignItems:'center',
+                gap:'6px', padding:'6px 12px', borderRadius:'20px', background:'#4ecdc418',
+                border:`1px solid ${T.teal}33`, fontSize:'12px', color:T.teal }}>
+                🌤 {weatherLoc}
+              </div>
+            )}
             {trip.transport && (
               <div style={{ display:'inline-flex', alignItems:'center',
                 gap:'6px', padding:'6px 12px', borderRadius:'20px', background:T.accentDim,
@@ -1146,6 +1194,7 @@ export default function TripClient({ trip: initialTrip, session }: {
         {(trip.days || []).map((day, i) => (
           <DayCard key={day.id} day={day}
             accent={DAY_ACCENTS[i % DAY_ACCENTS.length]}
+            weather={day.date ? weatherDays[day.date] : undefined}
             isDragging={dragIdx === i}
             isDragOver={dragOverIdx === i && dragIdx !== i}
             onDragStart={() => handleDragStart(i)}

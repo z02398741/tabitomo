@@ -33,6 +33,7 @@ export type Trip = {
   members: number | null
   budget: string | null
   transport: string | null
+  destination: string | null
   line_group_id: string | null
   created_by: string
   created_at: string
