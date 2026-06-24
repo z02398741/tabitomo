@@ -73,15 +73,29 @@ async function parseClaude(text: string) {
   return JSON.parse(textBlock.text.trim())
 }
 
-async function parseGemini(text: string) {
+async function callGeminiModel(modelName: string, text: string) {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-  const result = await model.generateContent(
-    `${SYSTEM_PROMPT}\n\n${USER_PROMPT(text)}`
-  )
+  const model = genAI.getGenerativeModel({ model: modelName })
+  const result = await model.generateContent(`${SYSTEM_PROMPT}\n\n${USER_PROMPT(text)}`)
   const raw = result.response.text().trim()
   const json = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
   return JSON.parse(json)
+}
+
+async function parseGemini(text: string) {
+  const delays = [1000, 2000]
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      return await callGeminiModel('gemini-2.5-flash', text)
+    } catch (e: any) {
+      const is503 = e.message?.includes('503') || e.status === 503
+      if (!is503 || attempt === delays.length) throw e
+      await new Promise(r => setTimeout(r, delays[attempt]))
+    }
+  }
+  // fallback to stable model if 2.5-flash is overloaded
+  console.warn('[parse] gemini-2.5-flash overloaded, falling back to gemini-2.0-flash')
+  return callGeminiModel('gemini-2.0-flash', text)
 }
 
 export async function POST(req: Request) {
