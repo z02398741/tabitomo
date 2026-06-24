@@ -602,6 +602,84 @@ function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver,
   )
 }
 
+// ── Trip Info Modal ────────────────────────────────────────────
+function TripInfoModal({ trip, onSave, onClose }: {
+  trip: Trip
+  onSave: (patch: { members: number | null; budget: string | null; transport: string | null }) => void
+  onClose: () => void
+}) {
+  const [members,   setMembers]   = useState(trip.members != null ? String(trip.members) : '')
+  const [budget,    setBudget]    = useState(trip.budget    ?? '')
+  const [transport, setTransport] = useState(trip.transport ?? '')
+  const [saving,    setSaving]    = useState(false)
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/trips/${trip.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          members:   members   ? parseInt(members)   : null,
+          budget:    budget.trim()    || null,
+          transport: transport.trim() || null,
+        }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      onSave({ members: data.members, budget: data.budget, transport: data.transport })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display:'flex', justifyContent:'space-between',
+        alignItems:'center', marginBottom:'20px' }}>
+        <span style={{ fontSize:'16px', fontWeight:700, color:T.textPri }}>旅行情報を編集</span>
+        <button onClick={onClose} style={{ background:'none', border:'none',
+          color:T.textDim, cursor:'pointer', fontSize:'20px' }}>×</button>
+      </div>
+
+      <div style={{ marginBottom:'14px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>👥 人数</label>
+        <input type="number" min="1" value={members}
+          onChange={e => setMembers(e.target.value)}
+          placeholder="例：5" style={inputSt}/>
+      </div>
+
+      <div style={{ marginBottom:'14px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>💰 予算</label>
+        <input value={budget} onChange={e => setBudget(e.target.value)}
+          placeholder="例：5万円" style={inputSt}/>
+      </div>
+
+      <div style={{ marginBottom:'24px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>🚢 交通手段</label>
+        <input value={transport} onChange={e => setTransport(e.target.value)}
+          placeholder="例：飛行機・高速バス" style={inputSt}/>
+      </div>
+
+      <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end' }}>
+        <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:'10px',
+          border:`1px solid ${T.border}`, background:'none', cursor:'pointer',
+          fontSize:'13px', color:T.textSec }}>キャンセル</button>
+        <button onClick={save} disabled={saving} style={{
+          padding:'9px 20px', borderRadius:'10px', border:'none',
+          background: saving ? T.textDim+'44' : T.accent,
+          color:'#fff', cursor: saving ? 'default' : 'pointer',
+          fontSize:'13px', fontWeight:600 }}>
+          {saving ? '保存中...' : '保存'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Batch Alert Modal ─────────────────────────────────────────
 function BatchAlertModal({ trip, onDone, onClose }: {
   trip: Trip
@@ -723,6 +801,7 @@ export default function TripClient({ trip: initialTrip, session }: {
   const [showLineBind,  setShowLineBind]  = useState(false)
   const [lineCopied,    setLineCopied]    = useState(false)
   const [showBatchAlert, setShowBatchAlert] = useState(false)
+  const [showTripInfo,  setShowTripInfo]  = useState(false)
   const [dragIdx,     setDragIdx]     = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
 
@@ -832,10 +911,18 @@ export default function TripClient({ trip: initialTrip, session }: {
             <div style={{ marginBottom:'6px' }}><TabitomoLogo /></div>
             <h1 style={{ fontSize:'22px', fontWeight:700, color:T.textPri,
               margin:'0 0 6px', lineHeight:1.3 }}>{trip.title}</h1>
-            <div style={{ fontSize:'12px', color:T.textSec }}>
-              {(trip.days||[]).length}日間
-              {trip.members ? ` · ${trip.members}名` : ''}
-              {trip.budget  ? ` · ${trip.budget}`   : ''}
+            <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+              <div style={{ fontSize:'12px', color:T.textSec }}>
+                {(trip.days||[]).length}日間
+                {trip.members ? ` · ${trip.members}名` : ''}
+                {trip.budget  ? ` · ${trip.budget}`   : ''}
+              </div>
+              <button onClick={() => setShowTripInfo(true)} style={{
+                display:'flex', alignItems:'center', padding:'3px 6px',
+                borderRadius:'6px', border:`1px solid ${T.border}`,
+                background:'none', color:T.textDim, cursor:'pointer' }}>
+                {Ico.edit}
+              </button>
             </div>
           </div>
           {/* Action buttons row */}
@@ -985,6 +1072,16 @@ export default function TripClient({ trip: initialTrip, session }: {
             </div>
           )}
         </Modal>
+      )}
+      {showTripInfo && (
+        <TripInfoModal
+          trip={trip}
+          onSave={patch => {
+            setTrip(t => ({ ...t, ...patch }))
+            setShowTripInfo(false)
+          }}
+          onClose={() => setShowTripInfo(false)}
+        />
       )}
       {showInvite && (
         <Modal onClose={() => setShowInvite(false)}>
