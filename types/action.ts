@@ -12,6 +12,7 @@ export type ParsedAction = {
   // for create
   title?: string
   dayId?: string         // target day
+  dayLabel?: string      // human-readable day label shown in confirmation
   // for move
   targetDayLabel?: string
   confidence: number

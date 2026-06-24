@@ -531,12 +531,26 @@ async function handleCommand(
       parsed.eventId = matched.id
       parsed.eventTitle = matched.title
       parsed.oldTime = matched.time
+      parsed.dayLabel = matched.day  // day label for confirmation display
     }
   }
+  // For Gemini-resolved events that have eventId but no dayLabel, look it up
+  if (parsed.eventId && !parsed.dayLabel) {
+    const ev = events.find(e => e.id === parsed!.eventId)
+    if (ev) parsed.dayLabel = ev.day
+  }
 
-  // For create: resolve dayId if not set
+  // For create: resolve dayId and dayLabel
   if (parsed.action === 'create' && !parsed.dayId) {
-    parsed.dayId = resolveDay(trip, (ruleResult as any)?.dayHint) ?? undefined
+    const dayHint = (ruleResult as any)?.dayHint
+    const dayId = resolveDay(trip, dayHint) ?? undefined
+    parsed.dayId = dayId
+    if (dayId) {
+      const d = (trip.days ?? []).find((x: any) => x.id === dayId)
+      if (d) parsed.dayLabel = d.date
+        ? `${d.label} (${d.date.slice(5).replace('-', '/')})`
+        : d.label
+    }
   }
 
   // Validate required fields
