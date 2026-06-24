@@ -44,15 +44,30 @@ function normalizeTime(raw: string): string | null {
   return `${String(m[1]).padStart(2,'0')}:${m[2]}`
 }
 
+function parseCost(text: string): number | null {
+  const m = text.match(/[¥￥]\s*([\d,，]+)|(\d[\d,，]+)\s*(?:円|JPY)/)
+  if (!m) return null
+  const raw = (m[1] ?? m[2]).replace(/[,，]/g, '')
+  const n = parseInt(raw)
+  return isNaN(n) ? null : n
+}
+
 function parseItinerary(text: string) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
-  const meta: any = { title:'', members:null, budget:'', transport:'' }
+  const meta: any = { title:'', members:null, budget:'', transport:'', destination:'' }
 
   for (const line of lines) {
     if (!meta.title && /【.+】/.test(line)) meta.title = line.match(/【(.+)】/)![1]
-    const mM = line.match(/人數[：:]\s*(\d+)/); if (mM) meta.members = parseInt(mM[1])
-    const mB = line.match(/預算[：:]\s*(.+)/);  if (mB) meta.budget = mB[1].trim()
-    const mT = line.match(/交通[：:]\s*(.+)/);  if (mT) meta.transport = mT[1].trim()
+    const mM = line.match(/(?:人數|人数|人員)[：:]\s*(\d+)/); if (mM) meta.members = parseInt(mM[1])
+    const mB = line.match(/(?:預算|予算)[：:]\s*(.+)/);       if (mB) meta.budget = mB[1].trim()
+    const mT = line.match(/(?:交通)[：:]\s*(.+)/);             if (mT) meta.transport = mT[1].trim()
+    const mD = line.match(/(?:目的地|行き先|場所)[：:]\s*(.+)/); if (mD) meta.destination = mD[1].trim()
+  }
+
+  // Try to infer destination from the title if not explicitly set
+  if (!meta.destination && meta.title) {
+    const dest = meta.title.match(/^([^\s\d｜|・\-–—]+(?:[島市都県省]|大島|沖縄|北海道))/)
+    if (dest) meta.destination = dest[1]
   }
 
   const DAY_RE = /(?:■|▶|【)?Day\s*\d+/i
@@ -76,7 +91,8 @@ function parseItinerary(text: string) {
       const title = line.replace(timeRaw,'').replace(/^[\s\-\.\．。、　]+/,'').trim()
       if (!title) continue
       const type = detectType(title)
-      cur.events.push({ time, title, type, note:'', alert_min: ALERT_MIN[type] || 0 })
+      const cost = parseCost(line)
+      cur.events.push({ time, title, type, note:'', location: null, cost, alert_min: ALERT_MIN[type] || 0 })
       continue
     }
     if (/^[※→▶注]/.test(line) && cur.events.length > 0) {
@@ -88,7 +104,8 @@ function parseItinerary(text: string) {
   if (cur && cur.events.length > 0) days.push(cur)
 
   return { title: meta.title || '旅行行程', members: meta.members,
-    budget: meta.budget || null, transport: meta.transport || null, days }
+    budget: meta.budget || null, transport: meta.transport || null,
+    destination: meta.destination || null, days }
 }
 
 const DEMO = `【伊豆大島 3天2夜行程｜7/18–7/20】

@@ -28,6 +28,7 @@ const Ico = {
   spark: <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z"/></svg>,
   plus:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
   out:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
+  copy:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
 }
 
 // ── Trip status helpers ────────────────────────────────────────
@@ -155,13 +156,15 @@ function NewTripModal({ onSave, onClose }: {
 }
 
 // ── Trip Card ──────────────────────────────────────────────────
-function TripCard({ trip, onClick, onDelete }: {
+function TripCard({ trip, onClick, onDelete, onDuplicate }: {
   trip: Trip
   onClick: () => void
   onDelete: () => void
+  onDuplicate: () => void
 }) {
   const [hov, setHov] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [duplicating, setDuplicating] = useState(false)
   const status   = tripStatus(trip.days)
   const countdown = daysUntil(trip.days)
 
@@ -179,6 +182,13 @@ function TripCard({ trip, onClick, onDelete }: {
   const handleCancel = (e: React.MouseEvent) => {
     e.stopPropagation()
     setConfirmDelete(false)
+  }
+
+  const handleDuplicateClick = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setDuplicating(true)
+    await onDuplicate()
+    setDuplicating(false)
   }
 
   return (
@@ -214,25 +224,46 @@ function TripCard({ trip, onClick, onDelete }: {
           </div>
         </div>
         {!confirmDelete ? (
-          <button
-            onClick={handleDeleteClick}
-            style={{ flexShrink:0, marginLeft:'12px', padding:'4px 8px',
-              borderRadius:'8px', border:`1px solid transparent`,
-              background:'none', color:T.textDim, cursor:'pointer',
-              fontSize:'18px', lineHeight:1, opacity: hov ? 1 : 0,
-              transition:'opacity .15s, color .15s, background .15s' }}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLButtonElement).style.color = '#f06292'
-              ;(e.currentTarget as HTMLButtonElement).style.background = '#f0629218'
-              ;(e.currentTarget as HTMLButtonElement).style.borderColor = '#f0629244'
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLButtonElement).style.color = T.textDim
-              ;(e.currentTarget as HTMLButtonElement).style.background = 'none'
-              ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent'
-            }}
-            title="削除"
-          >×</button>
+          <div style={{ flexShrink:0, display:'flex', alignItems:'center',
+            gap:'4px', marginLeft:'12px', opacity: hov ? 1 : 0,
+            transition:'opacity .15s' }}>
+            <button
+              onClick={handleDuplicateClick}
+              disabled={duplicating}
+              style={{ padding:'4px 8px', borderRadius:'8px',
+                border:`1px solid transparent`, background:'none',
+                color:T.textDim, cursor:'pointer', display:'flex',
+                alignItems:'center', gap:'4px', fontSize:'11px' }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLButtonElement).style.color = T.accent
+                ;(e.currentTarget as HTMLButtonElement).style.background = T.accentDim
+                ;(e.currentTarget as HTMLButtonElement).style.borderColor = T.accent+'44'
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLButtonElement).style.color = T.textDim
+                ;(e.currentTarget as HTMLButtonElement).style.background = 'none'
+                ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent'
+              }}
+              title="複製"
+            >{duplicating ? '...' : Ico.copy}</button>
+            <button
+              onClick={handleDeleteClick}
+              style={{ padding:'4px 8px', borderRadius:'8px',
+                border:`1px solid transparent`, background:'none',
+                color:T.textDim, cursor:'pointer', fontSize:'18px', lineHeight:1 }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLButtonElement).style.color = '#f06292'
+                ;(e.currentTarget as HTMLButtonElement).style.background = '#f0629218'
+                ;(e.currentTarget as HTMLButtonElement).style.borderColor = '#f0629244'
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLButtonElement).style.color = T.textDim
+                ;(e.currentTarget as HTMLButtonElement).style.background = 'none'
+                ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent'
+              }}
+              title="削除"
+            >×</button>
+          </div>
         ) : (
           <div onClick={e => e.stopPropagation()}
             style={{ flexShrink:0, display:'flex', alignItems:'center',
@@ -271,6 +302,16 @@ export default function HomeClient({ session }: { session: any }) {
     try {
       await fetch(`/api/trips/${id}`, { method: 'DELETE' })
       setTrips(p => p.filter(t => t.id !== id))
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const handleDuplicate = async (id: string) => {
+    try {
+      const res = await fetch(`/api/trips/${id}/duplicate`, { method: 'POST' })
+      const trip = await res.json()
+      setTrips(p => [trip, ...p])
     } catch (e) {
       console.error(e)
     }
@@ -378,7 +419,8 @@ export default function HomeClient({ session }: { session: any }) {
             {trips.map(trip => (
               <TripCard key={trip.id} trip={trip}
                 onClick={() => window.location.href = `/trips/${trip.id}`}
-                onDelete={() => handleDelete(trip.id)}/>
+                onDelete={() => handleDelete(trip.id)}
+                onDuplicate={() => handleDuplicate(trip.id)}/>
             ))}
           </>
         )}

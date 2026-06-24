@@ -17,6 +17,7 @@ Return this exact shape:
   "members": null or number,
   "budget": null or "budget string",
   "transport": null or "transport string",
+  "destination": null or "main destination city/area for weather lookup e.g. 沖縄・伊豆大島・京都",
   "days": [
     {
       "label": "Day1｜7/18（五）",
@@ -27,6 +28,8 @@ Return this exact shape:
           "title": "event title",
           "type": "transport|gather|meal|activity|stay|free",
           "note": "",
+          "location": null or "venue / place name if mentioned",
+          "cost": null or number (numeric JPY amount if mentioned, e.g. 3000),
           "alert_min": 0
         }
       ]
@@ -42,7 +45,10 @@ Rules:
 - Lines starting with ※ or → are notes for the previous event
 - type MUST be exactly one of: transport, gather, meal, activity, stay, free — never use any other value
 - Maximum 14 days per itinerary
-- If the input is not travel-related, return {"title":"","members":null,"budget":null,"transport":null,"days":[]}
+- destination: extract the main travel area (city / island / region) — used for weather forecast
+- location: only fill when the input mentions a specific venue name for that event; otherwise null
+- cost: extract numeric JPY amount only when explicitly stated (e.g. ¥3,000 → 3000); otherwise null
+- If the input is not travel-related, return {"title":"","members":null,"budget":null,"transport":null,"destination":null,"days":[]}
 - Return ONLY the JSON object, nothing else`
 
 const USER_PROMPT = (text: string) =>
