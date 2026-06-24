@@ -16,10 +16,11 @@ Plan trips together, share itineraries via LINE, and let AI organize your schedu
 
 - **AI Itinerary Generation** — Paste raw text or describe a trip; Gemini 2.5 Flash generates a structured day-by-day plan
 - **LINE OAuth Login** — One-tap sign-in with your LINE account, no password required
-- **LINE Bot (Tabitomo Bot)** — Query today's schedule, upcoming events, or specific dates directly from a LINE group chat
+- **LINE Bot (Tabitomo Bot)** — Query today's schedule, upcoming events, or specific dates directly from a LINE group chat; edit events, add/delete, and update trip-level info (人数・予算・交通手段) via natural language
 - **Team Collaboration** — Invite up to 20 members via a shareable link; manage member roles and remove members
-- **Ticket & File Attachments** — Upload PDF/image tickets per event; LINE bot sends them inline
-- **Push Notifications** — Event alerts delivered to LINE groups at configurable lead times
+- **Ticket & File Attachments** — Upload PDF/image tickets per event; badge shown on event cards; LINE bot sends them inline
+- **Push Notifications** — Event alerts delivered to LINE groups at configurable lead times (optimized cron with DB indexes)
+- **Trip Info Editing** — Edit member count, budget, and transport mode directly from the web UI
 - **Drag-and-Drop Reorder** — Reorder trip days with drag handles
 - **Export** — Copy full itinerary as plain text or LINE-formatted message
 - **Audit Log & Restore** — Every INSERT/UPDATE/DELETE is logged via PostgreSQL triggers; deleted events, days, members, and trips can be restored via API
@@ -123,6 +124,7 @@ audit_logs         — Full change history (INSERT/UPDATE/DELETE) for all tables
 | Method | Route | Description |
 |--------|-------|-------------|
 | GET/POST | `/api/trips` | List / create trips |
+| PATCH | `/api/trips/[id]` | Update members / budget / transport (member) |
 | DELETE | `/api/trips/[id]` | Delete trip (owner only) |
 | POST | `/api/trips/import` | AI-powered itinerary import |
 | GET/DELETE | `/api/trips/[id]/members` | List / remove members |
@@ -147,14 +149,40 @@ audit_logs         — Full change history (INSERT/UPDATE/DELETE) for all tables
 
 Once a LINE group is linked to a trip:
 
+**Read commands (all members):**
+
 | Input | Response |
 |-------|----------|
 | `help` / `ヘルプ` | Command guide |
-| `今日` / `今日の予定` | Today's schedule + ticket files |
-| `明日` | Tomorrow's schedule |
+| `今日` / `今天` | Today's schedule + ticket files |
+| `明日` / `明天` | Tomorrow's schedule |
 | `行程` / `全体` | Full itinerary overview |
 | `7/18` / `Day2` / `第2天` | Schedule for a specific date |
-| Natural language (owner/editor) | AI intent parse → confirm → execute |
+| `次の予定` / `下一個` | Next upcoming event today |
+| `今日の残り` / `今天剩下` | Remaining events today |
+| `成員` / `メンバー` | Member list with roles |
+| `概要` | Trip summary (dates, budget, transport) |
+| `最終日` | Last day's schedule |
+| `住宿` / `宿泊` | All stay events |
+| `交通` / `フライト` | All transport events |
+| `残り何日` / `還有幾天` | Days remaining until trip ends |
+| `何日目` / `今天第幾天` | Current day number of the trip |
+| `[event]幾點` / `[event]はいつ` | Time lookup by event name |
+
+**Edit commands (owner/editor only — requires confirmation):**
+
+| Input | Action |
+|-------|--------|
+| `咖啡廳改18:30` / `夕食改下午六點` | Update event time |
+| `集合延後30分` | Delay event by N minutes |
+| `集合提前30分` | Advance event by N minutes |
+| `把晚餐改到19:00` / `把X移到Y` | Retime event |
+| `取消晚餐` / `把晚餐刪掉` | Delete event |
+| `新增下午兩點 海灘散步` | Create event |
+| `明天下午三點加咖啡廳` | Create event on a specific day |
+| `人數改5人` / `参加人数5` | Update trip member count |
+| `預算改5萬` / `予算を3万円に` | Update trip budget |
+| `交通手段改飛機` / `交通改バス` | Update trip transport mode |
 
 ---
 
