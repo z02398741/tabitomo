@@ -3,8 +3,9 @@
  * pending_actions テーブルを流用して session state を管理する
  */
 import { createClient } from '@supabase/supabase-js'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { replyMessage, pushMessage, textMsg } from '@/lib/line/reply'
+import { runTravelAgent } from '@/lib/agents/travel/agent'
+import type { BudgetLevel } from '@/lib/agents/travel/types'
 
 function getAdmin() {
   return createClient(
@@ -66,42 +67,22 @@ export async function clearSuggestSession(groupId: string, userId: string) {
   await supabase.from('suggest_sessions').delete().eq('group_id', groupId).eq('user_id', userId)
 }
 
-// ── Gemini generation ──────────────────────────────────────────
-const SYSTEM_PROMPT = `You are a travel planning assistant. Create a detailed, realistic travel itinerary.
-Return ONLY valid JSON (no markdown) with this exact shape:
-{"title":"string","members":null,"budget":null,"transport":null,"destination":"string","days":[{"label":"Day1｜8/1（金）","date":"YYYY-MM-DD","events":[{"time":"HH:MM","title":"string","type":"transport|gather|meal|activity|stay|free","note":"","location":null,"cost":null,"alert_min":0}]}]}
-Rules: Each day 6-8 events, realistic HH:MM times, specific real place names, estimated JPY costs for meals/admissions. type must be one of: transport,gather,meal,activity,stay,free`
-
-async function callGemini(prompt: string): Promise<any> {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-  const tryModel = async (name: string) => {
-    const m = genAI.getGenerativeModel({ model: name })
-    const r = await m.generateContent(prompt)
-    const raw = r.response.text().trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
-    return JSON.parse(raw)
-  }
-  const delays = [1000, 2000]
-  for (let i = 0; i <= delays.length; i++) {
-    try { return await tryModel('gemini-2.5-flash') }
-    catch (e: any) {
-      if (!e.message?.includes('503') || i === delays.length) throw e
-      await new Promise(r => setTimeout(r, delays[i]))
-    }
-  }
-  return tryModel('gemini-2.0-flash')
-}
-
+// ── Travel Agent generation ────────────────────────────────────
 export async function generateTrip(session: SuggestSession): Promise<any> {
-  const budgetMap: Record<string, string> = { budget: '節約（低予算）', moderate: '普通', luxury: '豪華（高予算）' }
-  const lines = [
-    `目的地: ${session.destination}`,
-    `旅行日数: ${session.days}日間（${(session.days ?? 3) - 1}泊${session.days}日）`,
-    session.startDate ? `開始日: ${session.startDate}` : null,
-    session.members ? `人数: ${session.members}人` : null,
-    session.budget ? `予算感: ${budgetMap[session.budget] ?? session.budget}` : null,
-    session.freeNote?.trim() ? `備考: ${session.freeNote.trim()}` : null,
-  ].filter(Boolean).join('\n')
-  return callGemini(`${SYSTEM_PROMPT}\n\n以下の条件で旅行行程を作成してください:\n${lines}`)
+  const validBudgets: BudgetLevel[] = ['budget', 'moderate', 'luxury']
+  const budget: BudgetLevel = validBudgets.includes(session.budget as BudgetLevel)
+    ? (session.budget as BudgetLevel)
+    : 'moderate'
+
+  const rec = await runTravelAgent({
+    destination: session.destination!,
+    durationDays: session.days ?? 3,
+    startDate: session.startDate,
+    members: session.members ?? 2,
+    budget,
+    note: session.freeNote?.trim() || undefined,
+  })
+  return rec.itinerary
 }
 
 // ── Preview formatting ─────────────────────────────────────────
