@@ -931,19 +931,19 @@ export default function TripClient({ trip: initialTrip, session }: {
               alignItems:'center', gap:'4px', padding:'8px 12px', borderRadius:'10px',
               border:`1px solid ${T.teal}44`, background:T.teal+'22',
               color:T.teal, cursor:'pointer', fontSize:'12px', fontWeight:600 }}>
-              👥 招待
+              👥 メンバー
             </button>
             <button onClick={() => setShowLineBind(true)} style={{ display:'flex',
               alignItems:'center', gap:'4px', padding:'8px 12px', borderRadius:'10px',
               border:`1px solid ${T.amber}44`, background:T.amber+'22',
               color:T.amber, cursor:'pointer', fontSize:'12px', fontWeight:600 }}>
-              💬 LINE
+              🔗 連携
             </button>
             <button onClick={() => setShowBatchAlert(true)} style={{ display:'flex',
               alignItems:'center', gap:'4px', padding:'8px 12px', borderRadius:'10px',
               border:`1px solid ${T.rose}44`, background:T.rose+'22',
               color:T.rose, cursor:'pointer', fontSize:'12px', fontWeight:600 }}>
-              {Ico.bell} 通知
+              ⏰ アラート
             </button>
             <button onClick={() => setShowExport(true)} style={{ display:'flex',
               alignItems:'center', gap:'4px', padding:'8px 12px', borderRadius:'10px',
