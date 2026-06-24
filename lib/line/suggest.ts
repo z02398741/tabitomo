@@ -33,39 +33,37 @@ export interface SuggestSession {
   raw: string
 }
 
-// ── Session storage (reuses pending_actions table) ─────────────
+// ── Session storage (suggest_sessions table) ───────────────────
 export async function getSuggestSession(groupId: string, userId: string): Promise<SuggestSession | null> {
   const supabase = getAdmin()
-  const { data } = await supabase
-    .from('pending_actions')
-    .select('action_json')
+  const { data, error } = await supabase
+    .from('suggest_sessions')
+    .select('session_json, expires_at')
     .eq('group_id', groupId)
     .eq('user_id', userId)
-    .gt('expires_at', new Date().toISOString())
-    .order('created_at', { ascending: false })
-    .limit(1)
     .maybeSingle()
+  if (error) { console.error('[suggest] getSuggestSession error:', error.message); return null }
   if (!data) return null
-  const j = data.action_json as any
+  if (new Date(data.expires_at) < new Date()) {
+    await clearSuggestSession(groupId, userId)
+    return null
+  }
+  const j = data.session_json as any
   return j?.__type === 'suggest' ? (j as SuggestSession) : null
 }
 
 async function saveSuggestSession(groupId: string, userId: string, session: SuggestSession) {
   const supabase = getAdmin()
-  await supabase.from('pending_actions').delete().eq('group_id', groupId).eq('user_id', userId)
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
-  await supabase.from('pending_actions').insert({
-    group_id: groupId,
-    user_id: userId,
-    trip_id: '',
-    action_json: session,
-    expires_at: expiresAt,
-  })
+  const { error } = await supabase
+    .from('suggest_sessions')
+    .upsert({ group_id: groupId, user_id: userId, session_json: session, expires_at: expiresAt })
+  if (error) console.error('[suggest] saveSuggestSession error:', error.message)
 }
 
 export async function clearSuggestSession(groupId: string, userId: string) {
   const supabase = getAdmin()
-  await supabase.from('pending_actions').delete().eq('group_id', groupId).eq('user_id', userId)
+  await supabase.from('suggest_sessions').delete().eq('group_id', groupId).eq('user_id', userId)
 }
 
 // ── Gemini generation ──────────────────────────────────────────
