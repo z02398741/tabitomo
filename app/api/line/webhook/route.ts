@@ -71,13 +71,20 @@ async function getDayEventsMessages(day: any, fallback = 'この日の予定は�
   const lines = [`📅 ${day.label} の予定`]
   const ticketPaths: Array<{ name: string; path: string }> = []
 
+  let dayCost = 0
   for (const ev of sortedEvents(day.events)) {
     lines.push(`${EVENT_ICON[ev.type] || '•'} ${ev.time} ${ev.title}`)
     if (ev.note) lines.push(`   📝 ${ev.note}`)
+    if (ev.location) lines.push(`   📍 ${ev.location}`)
+    if (ev.cost != null && ev.cost > 0) {
+      lines.push(`   💰 ¥${ev.cost.toLocaleString()}`)
+      dayCost += ev.cost
+    }
     for (const t of ev.tickets ?? []) {
       if (t.storage_path) ticketPaths.push({ name: t.name || ev.title, path: t.storage_path })
     }
   }
+  if (dayCost > 0) lines.push(`\n💴 小計 ¥${dayCost.toLocaleString()}`)
 
   const messages: object[] = [textMsg(lines.join('\n'))]
 
@@ -291,6 +298,8 @@ async function handleCommand(
           `⏰ 次の予定`,
           `${EVENT_ICON[next.type] ?? '•'} ${next.time} ${next.title}`,
           next.note ? `📝 ${next.note}` : '',
+          next.location ? `📍 ${next.location}` : '',
+          next.cost != null && next.cost > 0 ? `💰 ¥${next.cost.toLocaleString()}` : '',
         ].filter(Boolean)
         await replyMessage(replyToken, [textMsg(lines.join('\n'))])
         return
@@ -313,6 +322,8 @@ async function handleCommand(
         for (const ev of remaining) {
           lines.push(`${EVENT_ICON[ev.type] ?? '•'} ${ev.time} ${ev.title}`)
           if (ev.note) lines.push(`   📝 ${ev.note}`)
+          if (ev.location) lines.push(`   📍 ${ev.location}`)
+          if (ev.cost != null && ev.cost > 0) lines.push(`   💰 ¥${ev.cost.toLocaleString()}`)
         }
         await replyMessage(replyToken, [textMsg(lines.join('\n'))])
         return
