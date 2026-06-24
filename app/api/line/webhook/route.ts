@@ -380,6 +380,37 @@ async function handleCommand(
     }
   }
 
+  // 費用 / 費用合計 / cost summary
+  if (/費用|コスト|budget|花費|支出/.test(lower)) {
+    const lines = [`💴 ${trip.title} 費用合計`]
+    let tripTotal = 0
+    for (const day of sortedDays(trip.days ?? [])) {
+      let dayTotal = 0
+      const evLines: string[] = []
+      for (const ev of sortedEvents(day.events ?? [])) {
+        if (ev.cost != null && ev.cost > 0) {
+          evLines.push(`  ${EVENT_ICON[ev.type] || '•'} ${ev.title}：¥${ev.cost.toLocaleString()}`)
+          dayTotal += ev.cost
+        }
+      }
+      if (dayTotal > 0) {
+        lines.push(`\n▶ ${day.label}`)
+        lines.push(...evLines)
+        lines.push(`  小計 ¥${dayTotal.toLocaleString()}`)
+        tripTotal += dayTotal
+      }
+    }
+    if (tripTotal === 0) {
+      lines.push('\n費用データがまだ登録されていません')
+    } else {
+      lines.push(`\n━━━━━━━━━━`)
+      lines.push(`合計 ¥${tripTotal.toLocaleString()}`)
+      if (trip.budget) lines.push(`予算 ${trip.budget}`)
+    }
+    await replyMessage(replyToken, [textMsg(lines.join('\n'))])
+    return
+  }
+
   // 住宿 / 宿泊
   if (/^(住宿|宿泊|ホテル|チェックイン)/.test(lower)) {
     const lines = ['🏨 宿泊']
@@ -478,7 +509,8 @@ async function handleCommand(
       `• @Tabi 住宿\n` +
       `• @Tabi 交通\n` +
       `• @Tabi 残り何日\n` +
-      `• @Tabi 何日目\n\n` +
+      `• @Tabi 何日目\n` +
+      `• @Tabi 費用\n\n` +
       `✏️ 修改時間\n` +
       `• @Tabi 咖啡廳改下午三點\n` +
       `• @Tabi 晚餐改18:30\n` +
