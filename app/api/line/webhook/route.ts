@@ -10,7 +10,7 @@ import { executeDelete } from '@/lib/rules/delete'
 import { replyMessage, pushMessage, textMsg, quickReplyMsg } from '@/lib/line/reply'
 import { getWeather } from '@/lib/weather'
 import { confirmationText, successText } from '@/lib/line/messages'
-import { handleSuggestFlow, getSuggestSession, handleSuggestDatePostback, handleSuggestConfirm, handleSuggestStepPostback } from '@/lib/line/suggest'
+import { handleSuggestFlow, handleSuggestDatePostback, handleSuggestConfirm, handleSuggestStepPostback } from '@/lib/line/suggest'
 import type { ParsedAction } from '@/types/action'
 
 function getAdmin() {
