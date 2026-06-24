@@ -29,6 +29,7 @@ const Ico = {
   plus:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
   out:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
   copy:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
+  wand:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M15 4V2m0 2v2m0-2h-2m2 0h2M3 10l9 9 9-9-9-9-9 9zm6-3l6 6"/></svg>,
 }
 
 // ── Trip status helpers ────────────────────────────────────────
@@ -380,37 +381,54 @@ export default function HomeClient({ session }: { session: any }) {
       <div style={{ padding:'0 20px 40px', maxWidth:'600px', margin:'0 auto' }}>
 
         {/* CTAs */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr',
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr',
           gap:'10px', marginBottom:'28px' }}>
+          <div onClick={() => router.push('/suggest')} style={{
+            display:'flex', flexDirection:'column', gap:'10px',
+            padding:'16px 14px', borderRadius:'16px',
+            background:`linear-gradient(135deg, #a78bfa22, ${T.accent}11)`,
+            border:`1px solid #a78bfa44`, cursor:'pointer' }}>
+            <div style={{ width:'34px', height:'34px', borderRadius:'10px',
+              background:'#a78bfa22', display:'flex', alignItems:'center',
+              justifyContent:'center', color:'#a78bfa' }}>{Ico.wand}</div>
+            <div>
+              <div style={{ fontSize:'12px', fontWeight:700, color:T.textPri,
+                marginBottom:'2px' }}>AI提案</div>
+              <div style={{ fontSize:'10px', color:T.textSec }}>
+                条件を入れて自動生成
+              </div>
+            </div>
+          </div>
+
           <div onClick={() => router.push('/import')} style={{
             display:'flex', flexDirection:'column', gap:'10px',
-            padding:'18px 16px', borderRadius:'16px',
+            padding:'16px 14px', borderRadius:'16px',
             background:`linear-gradient(135deg, ${T.accent}22, ${T.teal}11)`,
             border:`1px solid ${T.accent}44`, cursor:'pointer' }}>
-            <div style={{ width:'36px', height:'36px', borderRadius:'10px',
+            <div style={{ width:'34px', height:'34px', borderRadius:'10px',
               background:T.accentDim, display:'flex', alignItems:'center',
               justifyContent:'center', color:T.accent }}>{Ico.spark}</div>
             <div>
-              <div style={{ fontSize:'13px', fontWeight:700, color:T.textPri,
+              <div style={{ fontSize:'12px', fontWeight:700, color:T.textPri,
                 marginBottom:'2px' }}>AIインポート</div>
-              <div style={{ fontSize:'11px', color:T.textSec }}>
-                テキストを貼り付けて自動変換
+              <div style={{ fontSize:'10px', color:T.textSec }}>
+                テキストを貼り付け変換
               </div>
             </div>
           </div>
 
           <div onClick={() => setShowNew(true)} style={{
             display:'flex', flexDirection:'column', gap:'10px',
-            padding:'18px 16px', borderRadius:'16px',
+            padding:'16px 14px', borderRadius:'16px',
             background:`linear-gradient(135deg, ${T.teal}18, ${T.accent}08)`,
             border:`1px solid ${T.teal}44`, cursor:'pointer' }}>
-            <div style={{ width:'36px', height:'36px', borderRadius:'10px',
+            <div style={{ width:'34px', height:'34px', borderRadius:'10px',
               background:T.teal+'22', display:'flex', alignItems:'center',
               justifyContent:'center', color:T.teal }}>{Ico.plus}</div>
             <div>
-              <div style={{ fontSize:'13px', fontWeight:700, color:T.textPri,
+              <div style={{ fontSize:'12px', fontWeight:700, color:T.textPri,
                 marginBottom:'2px' }}>手動作成</div>
-              <div style={{ fontSize:'11px', color:T.textSec }}>
+              <div style={{ fontSize:'10px', color:T.textSec }}>
                 ゼロから行程を組み立てる
               </div>
             </div>
