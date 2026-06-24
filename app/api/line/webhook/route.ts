@@ -233,7 +233,10 @@ async function handleCommand(
         if (action.action === 'update') await executeUpdate(action)
         else if (action.action === 'create') await executeCreate(action)
         else if (action.action === 'delete') await executeDelete(action)
-        else {
+        else if (action.action === 'trip_update' && action.tripField && action.tripValue !== undefined) {
+          const val = action.tripField === 'members' ? parseInt(action.tripValue) : action.tripValue
+          await supabase.from('trips').update({ [action.tripField]: val }).eq('id', pending.trip_id)
+        } else {
           await replyMessage(replyToken, [textMsg('⚠️ 此操作類型暫不支持自動執行，請在 App 中修改。')])
           return
         }
@@ -377,8 +380,8 @@ async function handleCommand(
     return
   }
 
-  // 交通 / 移動
-  if (/^(交通|フライト|transport)/.test(lower)) {
+  // 交通 / 移動 (standalone query only — not edit commands like 交通改バス)
+  if (/^(交通|フライト|transport)(一覧|リスト|情報)?[\?？]?$/.test(lower.trim())) {
     const lines = ['🚢 交通']
     for (const day of sortedDays(trip.days ?? []))
       for (const ev of sortedEvents(day.events ?? []))
@@ -553,8 +556,8 @@ async function handleCommand(
     }
   }
 
-  // Validate required fields
-  if (parsed.action !== 'create' && !parsed.eventId) {
+  // Validate required fields (trip_update needs neither eventId nor dayId)
+  if (parsed.action !== 'create' && parsed.action !== 'trip_update' && !parsed.eventId) {
     await replyMessage(replyToken, [textMsg(`⚠️ 找不到行程項目「${parsed.eventTitle || text}」，請確認名稱。`)])
     return
   }

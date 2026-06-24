@@ -1,4 +1,5 @@
-export type ActionType = 'update' | 'create' | 'delete' | 'move'
+export type ActionType = 'update' | 'create' | 'delete' | 'move' | 'trip_update'
+export type TripField = 'members' | 'budget' | 'transport'
 
 export type ParsedAction = {
   action: ActionType
@@ -15,6 +16,9 @@ export type ParsedAction = {
   dayLabel?: string      // human-readable day label shown in confirmation
   // for move
   targetDayLabel?: string
+  // for trip_update
+  tripField?: TripField
+  tripValue?: string
   confidence: number
   raw: string            // original user text
 }

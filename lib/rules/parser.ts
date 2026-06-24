@@ -1,4 +1,4 @@
-import type { ActionType } from '@/types/action'
+import type { ActionType, TripField } from '@/types/action'
 
 const CH: Record<string, number> = {
   '零':0,'○':0,'〇':0,'一':1,'二':2,'兩':2,'三':3,'四':4,
@@ -49,6 +49,8 @@ export type RuleResult = {
   title?: string
   delayMinutes?: number
   dayHint?: DayHint
+  tripField?: TripField
+  tripValue?: string
   confidence: number
 }
 
@@ -135,6 +137,22 @@ export function parseRule(text: string): RuleResult | null {
       return { action: 'create', title, time, dayHint, confidence: 0.85 }
     }
   }
+
+  // --- TRIP-LEVEL UPDATE ---
+
+  // 人數 / 人数: 人數5 / 人數改5人
+  m = text.match(/^(?:人數|人数|メンバー数?|参加者?数?|参加人数?)(?:改|変|を|に|設定)?(\d+)人?$/)
+  if (m) return { action: 'trip_update', tripField: 'members', tripValue: m[1], confidence: 0.9 }
+
+  // 預算 / 予算: 預算改5萬 / 予算を1万円に
+  m = text.match(/^(?:預算|予算|budget)(?:改|変|を|は|に)?(.+)$/)
+  if (m && m[1].trim()) return { action: 'trip_update', tripField: 'budget', tripValue: m[1].trim(), confidence: 0.9 }
+
+  // 交通手段 / 交通方式: 交通手段飛機 / 交通改バス (requires 手段/方式 or modifier to avoid conflict with query)
+  m = text.match(/^(?:交通手段|交通方式)(?:改|変|を|は|に)?(.+)$/)
+  if (m && m[1].trim()) return { action: 'trip_update', tripField: 'transport', tripValue: m[1].trim(), confidence: 0.9 }
+  m = text.match(/^交通(?:改|変更?|を)(.+)$/)
+  if (m && m[1].trim()) return { action: 'trip_update', tripField: 'transport', tripValue: m[1].trim(), confidence: 0.9 }
 
   return null
 }

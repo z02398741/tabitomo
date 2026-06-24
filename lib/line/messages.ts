@@ -32,6 +32,12 @@ export function confirmationText(action: ParsedAction): string {
       lines.push(`📦 移動`)
       lines.push(`${action.eventTitle || ''} → ${action.targetDayLabel || ''}`)
       break
+    case 'trip_update': {
+      const fieldLabel = action.tripField === 'members' ? '人數' : action.tripField === 'budget' ? '預算' : '交通手段'
+      lines.push(`✏️ ${fieldLabel}`)
+      lines.push(`→ ${action.tripValue ?? ''}`)
+      break
+    }
   }
 
   lines.push('\n請回覆：確認 / 取消')
@@ -53,6 +59,10 @@ export function successText(action: ParsedAction): string {
       return `✅ 已取消 ${action.eventTitle}${day}`
     case 'move':
       return `✅ ${action.eventTitle} を ${action.targetDayLabel} へ移動しました`
+    case 'trip_update': {
+      const fieldLabel = action.tripField === 'members' ? '人數' : action.tripField === 'budget' ? '預算' : '交通手段'
+      return `✅ ${fieldLabel} 已更新為 ${action.tripValue ?? ''}`
+    }
     default:
       return '✅ 完成'
   }
