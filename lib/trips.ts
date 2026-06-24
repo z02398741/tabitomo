@@ -16,7 +16,7 @@ export async function getTrips(userId: string): Promise<Trip[]> {
       trip_id,
       role,
       trips (
-        id, title, members, budget, transport,
+        id, title, members, budget, transport, destination,
         line_group_id, created_by, created_at,
         days:trip_days(id, date, label, position)
       )

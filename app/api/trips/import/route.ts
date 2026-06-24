@@ -24,11 +24,12 @@ export async function POST(req: Request) {
   const { data: trip, error: tripError } = await supabase
     .from('trips')
     .insert({
-      title:      body.title,
-      members:    body.members,
-      budget:     body.budget,
-      transport:  body.transport,
-      created_by: userId,
+      title:       body.title,
+      members:     body.members,
+      budget:      body.budget,
+      transport:   body.transport,
+      destination: body.destination ?? null,
+      created_by:  userId,
     })
     .select()
     .single()
@@ -64,6 +65,8 @@ export async function POST(req: Request) {
           title:     ev.title,
           type:      ev.type,
           note:      ev.note || '',
+          location:  ev.location ?? null,
+          cost:      ev.cost != null ? Number(ev.cost) : null,
           alert_min: ev.alert_min || 0,
         }))
       )

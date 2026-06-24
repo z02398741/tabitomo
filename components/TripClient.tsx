@@ -31,7 +31,17 @@ async function apiReorderDays(ids: string[]) {
   const res = await fetch('/api/days/reorder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) })
   if (!res.ok) throw new Error(await res.text())
 }
+async function apiUpdateDay(id: string, body: object) {
+  const res = await fetch(`/api/days/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+async function apiDeleteTicket(id: string) {
+  const res = await fetch(`/api/tickets/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
+}
 import type { Trip, TripDay, Event } from '@/types'
+import type { DayWeather } from '@/lib/weather'
 
 const T = {
   bg:       '#0d0f14',
@@ -270,15 +280,25 @@ function EventFormModal({ event, dayId, onSave, onClose }: {
             🎫 チケット・票券
           </label>
           {tickets.map(t => (
-            <div key={t.id} onClick={() => openTicket(t.id)} style={{
+            <div key={t.id} style={{
               display:'flex', alignItems:'center', gap:'8px',
               padding:'8px 12px', borderRadius:'8px', marginBottom:'6px',
               background:'#13161e', border:`1px solid ${T.border}`,
-              cursor:'pointer',
             }}>
               <span style={{ fontSize:'14px' }}>🎫</span>
-              <span style={{ fontSize:'13px', color:T.accentLt, flex:1 }}>{t.name}</span>
-              <span style={{ fontSize:'11px', color:T.textDim }}>開く →</span>
+              <span onClick={() => openTicket(t.id)}
+                style={{ fontSize:'13px', color:T.accentLt, flex:1, cursor:'pointer' }}>{t.name}</span>
+              <span onClick={() => openTicket(t.id)}
+                style={{ fontSize:'11px', color:T.textDim, cursor:'pointer' }}>開く →</span>
+              <button onClick={async () => {
+                await apiDeleteTicket(t.id)
+                setTickets(p => p.filter(x => x.id !== t.id))
+              }} style={{ padding:'4px', borderRadius:'6px',
+                border:`1px solid ${T.border}`, background:'none',
+                color:'#f06292', cursor:'pointer', display:'flex',
+                alignItems:'center', flexShrink:0 }}>
+                {Ico.trash}
+              </button>
             </div>
           ))}
           <label style={{
@@ -368,6 +388,62 @@ function DayFormModal({ tripId, onSave, onClose }: {
           color:'#fff', cursor: label.trim() && !saving ? 'pointer' : 'default',
           fontSize:'13px', fontWeight:600 }}>
           {saving ? '追加中...' : '追加'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+// ── Day Edit Modal ─────────────────────────────────────────────
+function DayEditModal({ day, onSave, onClose }: {
+  day: TripDay
+  onSave: (day: TripDay) => void
+  onClose: () => void
+}) {
+  const [label,  setLabel]  = useState(day.label)
+  const [date,   setDate]   = useState(day.date || '')
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    if (!label.trim()) return
+    setSaving(true)
+    try {
+      const updated = await apiUpdateDay(day.id, { label: label.trim(), date: date || null })
+      onSave(updated)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display:'flex', justifyContent:'space-between',
+        alignItems:'center', marginBottom:'20px' }}>
+        <span style={{ fontSize:'16px', fontWeight:700, color:T.textPri }}>日程を編集</span>
+        <button onClick={onClose} style={{ background:'none', border:'none',
+          color:T.textDim, cursor:'pointer', fontSize:'20px' }}>×</button>
+      </div>
+      <div style={{ marginBottom:'14px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>ラベル *</label>
+        <input value={label} onChange={e=>setLabel(e.target.value)}
+          placeholder="例：Day1｜7/18（五）" style={inputSt}/>
+      </div>
+      <div style={{ marginBottom:'20px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>日付</label>
+        <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inputSt}/>
+      </div>
+      <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end' }}>
+        <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:'10px',
+          border:`1px solid ${T.border}`, background:'none', cursor:'pointer',
+          fontSize:'13px', color:T.textSec }}>キャンセル</button>
+        <button onClick={save} disabled={!label.trim() || saving} style={{
+          padding:'9px 20px', borderRadius:'10px', border:'none',
+          background: label.trim() && !saving ? T.accent : T.textDim+'44',
+          color:'#fff', cursor: label.trim() && !saving ? 'pointer' : 'default',
+          fontSize:'13px', fontWeight:600 }}>
+          {saving ? '保存中...' : '保存'}
         </button>
       </div>
     </Modal>
@@ -520,9 +596,10 @@ function EventRow({ ev, accent, isLast, onEdit, onDelete }: {
 }
 
 // ── Day Card ───────────────────────────────────────────────────
-function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver, onDrop, onDragEnd, onAddEvent, onEditEvent, onDeleteEvent, onDeleteDay }: {
+function DayCard({ day, accent, weather, isDragging, isDragOver, onDragStart, onDragOver, onDrop, onDragEnd, onAddEvent, onEditEvent, onDeleteEvent, onDeleteDay, onEditDay }: {
   day: TripDay & { events?: Event[] }
   accent: string
+  weather?: DayWeather
   isDragging: boolean
   isDragOver: boolean
   onDragStart: () => void
@@ -533,10 +610,12 @@ function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver,
   onEditEvent: (ev: Event) => void
   onDeleteEvent: (id: string) => void
   onDeleteDay: (id: string) => void
+  onEditDay: (day: TripDay) => void
 }) {
   const [open,          setOpen]          = useState(true)
   const [showEventForm, setShowEventForm] = useState(false)
   const [editingEvent,  setEditingEvent]  = useState<Event | undefined>()
+  const [showDayEdit,   setShowDayEdit]   = useState(false)
   const events = [...(day.events ?? [])].sort((a, b) => a.time.localeCompare(b.time))
   const hasCost = events.some(ev => ev.cost != null && ev.cost > 0)
   const totalCost = hasCost ? events.reduce((sum, ev) => sum + (ev.cost ?? 0), 0) : 0
@@ -568,7 +647,20 @@ function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver,
             <div style={{ flex:1 }}>
               <div style={{ fontSize:'13px', fontWeight:700, color:T.textPri,
                 marginBottom:'2px' }}>{day.label}</div>
-              {day.date && <div style={{ fontSize:'11px', color:T.textDim }}>{day.date}</div>}
+              <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
+                {day.date && <span style={{ fontSize:'11px', color:T.textDim }}>{day.date}</span>}
+                {weather && (
+                  <span title={weather.label} style={{ display:'inline-flex',
+                    alignItems:'center', gap:'4px', fontSize:'11px', color:T.textSec,
+                    padding:'1px 7px', borderRadius:'20px',
+                    background:'#6c8ef518', border:`1px solid ${T.border}` }}>
+                    {weather.emoji} {weather.tmin}〜{weather.tmax}℃
+                    {weather.pop > 0 && (
+                      <span style={{ color:'#6c8ef5' }}>☔{weather.pop}%</span>
+                    )}
+                  </span>
+                )}
+              </div>
             </div>
             <span style={{ fontSize:'10px', color:T.textDim }}>{events.length}件</span>
             <span style={{ color:T.textDim, fontSize:'14px',
@@ -582,6 +674,12 @@ function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver,
               color:accent, cursor:'pointer', display:'flex',
               alignItems:'center', gap:'4px', fontSize:'11px', fontWeight:700 }}>
               {Ico.plus} 追加
+            </button>
+            <button onClick={() => setShowDayEdit(true)} style={{
+              padding:'6px', borderRadius:'8px',
+              border:`1px solid ${T.border}`, background:'none',
+              color:T.textDim, cursor:'pointer', display:'flex', alignItems:'center' }}>
+              {Ico.edit}
             </button>
             <button onClick={() => onDeleteDay(day.id)} style={{
               padding:'6px', borderRadius:'8px',
@@ -639,6 +737,16 @@ function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver,
           }}
         />
       )}
+      {showDayEdit && (
+        <DayEditModal
+          day={day}
+          onSave={updated => {
+            onEditDay(updated)
+            setShowDayEdit(false)
+          }}
+          onClose={() => setShowDayEdit(false)}
+        />
+      )}
     </>
   )
 }
@@ -646,29 +754,34 @@ function DayCard({ day, accent, isDragging, isDragOver, onDragStart, onDragOver,
 // ── Trip Info Modal ────────────────────────────────────────────
 function TripInfoModal({ trip, onSave, onClose }: {
   trip: Trip
-  onSave: (patch: { members: number | null; budget: string | null; transport: string | null }) => void
+  onSave: (patch: { title: string; members: number | null; budget: string | null; transport: string | null; destination: string | null }) => void
   onClose: () => void
 }) {
-  const [members,   setMembers]   = useState(trip.members != null ? String(trip.members) : '')
-  const [budget,    setBudget]    = useState(trip.budget    ?? '')
-  const [transport, setTransport] = useState(trip.transport ?? '')
-  const [saving,    setSaving]    = useState(false)
+  const [title,       setTitle]       = useState(trip.title)
+  const [members,     setMembers]     = useState(trip.members != null ? String(trip.members) : '')
+  const [budget,      setBudget]      = useState(trip.budget    ?? '')
+  const [transport,   setTransport]   = useState(trip.transport ?? '')
+  const [destination, setDestination] = useState(trip.destination ?? '')
+  const [saving,      setSaving]      = useState(false)
 
   const save = async () => {
+    if (!title.trim()) return
     setSaving(true)
     try {
       const res = await fetch(`/api/trips/${trip.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          members:   members   ? parseInt(members)   : null,
-          budget:    budget.trim()    || null,
-          transport: transport.trim() || null,
+          title:       title.trim(),
+          members:     members   ? parseInt(members)   : null,
+          budget:      budget.trim()    || null,
+          transport:   transport.trim() || null,
+          destination: destination.trim() || null,
         }),
       })
       if (!res.ok) throw new Error(await res.text())
       const data = await res.json()
-      onSave({ members: data.members, budget: data.budget, transport: data.transport })
+      onSave({ title: data.title, members: data.members, budget: data.budget, transport: data.transport, destination: data.destination })
     } finally {
       setSaving(false)
     }
@@ -681,6 +794,13 @@ function TripInfoModal({ trip, onSave, onClose }: {
         <span style={{ fontSize:'16px', fontWeight:700, color:T.textPri }}>旅行情報を編集</span>
         <button onClick={onClose} style={{ background:'none', border:'none',
           color:T.textDim, cursor:'pointer', fontSize:'20px' }}>×</button>
+      </div>
+
+      <div style={{ marginBottom:'14px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>✏️ タイトル *</label>
+        <input value={title} onChange={e => setTitle(e.target.value)}
+          placeholder="例：伊豆大島 3天2夜" style={inputSt}/>
       </div>
 
       <div style={{ marginBottom:'14px' }}>
@@ -698,21 +818,28 @@ function TripInfoModal({ trip, onSave, onClose }: {
           placeholder="例：5万円" style={inputSt}/>
       </div>
 
-      <div style={{ marginBottom:'24px' }}>
+      <div style={{ marginBottom:'14px' }}>
         <label style={{ display:'block', fontSize:'11px', fontWeight:700,
           color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>🚢 交通手段</label>
         <input value={transport} onChange={e => setTransport(e.target.value)}
           placeholder="例：飛行機・高速バス" style={inputSt}/>
       </div>
 
+      <div style={{ marginBottom:'24px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>🌤 目的地（天気予報用）</label>
+        <input value={destination} onChange={e => setDestination(e.target.value)}
+          placeholder="例：伊豆大島・沖縄・京都" style={inputSt}/>
+      </div>
+
       <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end' }}>
         <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:'10px',
           border:`1px solid ${T.border}`, background:'none', cursor:'pointer',
           fontSize:'13px', color:T.textSec }}>キャンセル</button>
-        <button onClick={save} disabled={saving} style={{
+        <button onClick={save} disabled={!title.trim() || saving} style={{
           padding:'9px 20px', borderRadius:'10px', border:'none',
-          background: saving ? T.textDim+'44' : T.accent,
-          color:'#fff', cursor: saving ? 'default' : 'pointer',
+          background: title.trim() && !saving ? T.accent : T.textDim+'44',
+          color:'#fff', cursor: title.trim() && !saving ? 'pointer' : 'default',
           fontSize:'13px', fontWeight:600 }}>
           {saving ? '保存中...' : '保存'}
         </button>
@@ -845,6 +972,23 @@ export default function TripClient({ trip: initialTrip, session }: {
   const [showTripInfo,  setShowTripInfo]  = useState(false)
   const [dragIdx,     setDragIdx]     = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+  const [weatherDays, setWeatherDays] = useState<Record<string, DayWeather>>({})
+  const [weatherLoc,  setWeatherLoc]  = useState<string | null>(null)
+
+  useEffect(() => {
+    const dest = trip.destination
+    if (!dest) { setWeatherDays({}); setWeatherLoc(null); return }
+    let cancelled = false
+    fetch(`/api/weather?q=${encodeURIComponent(dest)}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (cancelled || !data) return
+        setWeatherDays(data.days ?? {})
+        setWeatherLoc(data.location?.name ?? null)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [trip.destination])
 
   const updateDays = (days: any[]) => setTrip(t => ({ ...t, days }))
 
@@ -886,6 +1030,10 @@ export default function TripClient({ trip: initialTrip, session }: {
   const handleDeleteDay = async (dayId: string) => {
     await apiDeleteDay(dayId)
     updateDays((trip.days || []).filter(d => d.id !== dayId))
+  }
+
+  const handleEditDay = (day: TripDay) => {
+    updateDays((trip.days || []).map(d => d.id === day.id ? { ...d, ...day } : d))
   }
 
   const handleDragStart = (idx: number) => setDragIdx(idx)
@@ -999,8 +1147,15 @@ export default function TripClient({ trip: initialTrip, session }: {
           </div>
         </div>
 
-        {(trip.transport || hasTripCost) && (
+        {(trip.transport || hasTripCost || weatherLoc) && (
           <div style={{ marginTop:'14px', display:'flex', gap:'8px', flexWrap:'wrap' }}>
+            {weatherLoc && (
+              <div style={{ display:'inline-flex', alignItems:'center',
+                gap:'6px', padding:'6px 12px', borderRadius:'20px', background:'#4ecdc418',
+                border:`1px solid ${T.teal}33`, fontSize:'12px', color:T.teal }}>
+                🌤 {weatherLoc}
+              </div>
+            )}
             {trip.transport && (
               <div style={{ display:'inline-flex', alignItems:'center',
                 gap:'6px', padding:'6px 12px', borderRadius:'20px', background:T.accentDim,
@@ -1036,6 +1191,7 @@ export default function TripClient({ trip: initialTrip, session }: {
         {(trip.days || []).map((day, i) => (
           <DayCard key={day.id} day={day}
             accent={DAY_ACCENTS[i % DAY_ACCENTS.length]}
+            weather={day.date ? weatherDays[day.date] : undefined}
             isDragging={dragIdx === i}
             isDragOver={dragOverIdx === i && dragIdx !== i}
             onDragStart={() => handleDragStart(i)}
@@ -1046,6 +1202,7 @@ export default function TripClient({ trip: initialTrip, session }: {
             onEditEvent={ev => handleEditEvent(day.id, ev)}
             onDeleteEvent={id => handleDeleteEvent(day.id, id)}
             onDeleteDay={handleDeleteDay}
+            onEditDay={handleEditDay}
           />
         ))}
 

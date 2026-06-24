@@ -26,7 +26,7 @@ export async function PATCH(
   }
 
   const body = await req.json()
-  const allowed = ['members', 'budget', 'transport'] as const
+  const allowed = ['title', 'members', 'budget', 'transport', 'destination'] as const
   const patch: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) patch[key] = body[key] === '' ? null : body[key]
@@ -39,7 +39,7 @@ export async function PATCH(
     .from('trips')
     .update(patch)
     .eq('id', id)
-    .select('id, members, budget, transport')
+    .select('id, title, members, budget, transport, destination')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

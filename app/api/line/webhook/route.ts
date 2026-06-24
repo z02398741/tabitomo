@@ -8,6 +8,7 @@ import { executeUpdate } from '@/lib/rules/update'
 import { executeCreate } from '@/lib/rules/create'
 import { executeDelete } from '@/lib/rules/delete'
 import { replyMessage, textMsg, quickReplyMsg } from '@/lib/line/reply'
+import { getWeather } from '@/lib/weather'
 import { confirmationText, successText } from '@/lib/line/messages'
 import type { ParsedAction } from '@/types/action'
 
@@ -260,6 +261,45 @@ async function handleCommand(
   // Quick commands
   const lower = text.toLowerCase()
 
+  // 天気 / 天氣 / weather — check before day/予定 handlers so "今日の天気" isn't swallowed
+  if (/天気|天氣|お天気|weather/.test(lower)) {
+    if (!trip.destination) {
+      await replyMessage(replyToken, [textMsg(
+        '🌤 目的地が設定されていません。\nApp で目的地を設定すると天気予報を表示できます。\nhttps://tabitomo-gilt.vercel.app'
+      )])
+      return
+    }
+    const wx = await getWeather(trip.destination)
+    if (!wx.location) {
+      await replyMessage(replyToken, [textMsg(`「${trip.destination}」の場所が見つかりませんでした`)])
+      return
+    }
+    const lines = [`🌤 ${wx.location.name} の天気予報`]
+    const datedDays = sortedDays(trip.days ?? []).filter((d: any) => d.date && wx.days[d.date])
+    if (datedDays.length) {
+      for (const day of datedDays) {
+        const w = wx.days[day.date]
+        const rain = w.pop > 0 ? `  ☔${w.pop}%` : ''
+        lines.push(`\n▶ ${day.label}`)
+        lines.push(`${w.emoji} ${w.label}  ${w.tmin}〜${w.tmax}℃${rain}`)
+      }
+    } else {
+      // 旅行日が予報範囲(16日)外 → 直近の予報を表示
+      const upcoming = Object.values(wx.days).slice(0, 5)
+      if (!upcoming.length) {
+        await replyMessage(replyToken, [textMsg('天気予報を取得できませんでした')])
+        return
+      }
+      lines.push('（旅行日は予報範囲外のため直近の予報）')
+      for (const w of upcoming) {
+        const rain = w.pop > 0 ? `  ☔${w.pop}%` : ''
+        lines.push(`${w.date.slice(5).replace('-', '/')} ${w.emoji} ${w.label} ${w.tmin}〜${w.tmax}℃${rain}`)
+      }
+    }
+    await replyMessage(replyToken, [textMsg(lines.join('\n'))])
+    return
+  }
+
   // Specific day query (明日, 7/19, Day2, etc.) — check before generic 予定
   const specificDay = findDayByQuery(text, trip)
   if (specificDay) {
@@ -380,6 +420,37 @@ async function handleCommand(
     }
   }
 
+  // 費用 / 費用合計 / cost summary
+  if (/費用|コスト|budget|花費|支出/.test(lower)) {
+    const lines = [`💴 ${trip.title} 費用合計`]
+    let tripTotal = 0
+    for (const day of sortedDays(trip.days ?? [])) {
+      let dayTotal = 0
+      const evLines: string[] = []
+      for (const ev of sortedEvents(day.events ?? [])) {
+        if (ev.cost != null && ev.cost > 0) {
+          evLines.push(`  ${EVENT_ICON[ev.type] || '•'} ${ev.title}：¥${ev.cost.toLocaleString()}`)
+          dayTotal += ev.cost
+        }
+      }
+      if (dayTotal > 0) {
+        lines.push(`\n▶ ${day.label}`)
+        lines.push(...evLines)
+        lines.push(`  小計 ¥${dayTotal.toLocaleString()}`)
+        tripTotal += dayTotal
+      }
+    }
+    if (tripTotal === 0) {
+      lines.push('\n費用データがまだ登録されていません')
+    } else {
+      lines.push(`\n━━━━━━━━━━`)
+      lines.push(`合計 ¥${tripTotal.toLocaleString()}`)
+      if (trip.budget) lines.push(`予算 ${trip.budget}`)
+    }
+    await replyMessage(replyToken, [textMsg(lines.join('\n'))])
+    return
+  }
+
   // 住宿 / 宿泊
   if (/^(住宿|宿泊|ホテル|チェックイン)/.test(lower)) {
     const lines = ['🏨 宿泊']
@@ -478,7 +549,9 @@ async function handleCommand(
       `• @Tabi 住宿\n` +
       `• @Tabi 交通\n` +
       `• @Tabi 残り何日\n` +
-      `• @Tabi 何日目\n\n` +
+      `• @Tabi 何日目\n` +
+      `• @Tabi 費用\n` +
+      `• @Tabi 天気\n\n` +
       `✏️ 修改時間\n` +
       `• @Tabi 咖啡廳改下午三點\n` +
       `• @Tabi 晚餐改18:30\n` +
