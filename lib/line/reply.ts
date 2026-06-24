@@ -1,5 +1,17 @@
 const TOKEN = () => process.env.LINE_MESSAGING_ACCESS_TOKEN!
 
+export async function pushMessage(to: string, messages: object[]) {
+  const res = await fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${TOKEN()}`,
+    },
+    body: JSON.stringify({ to, messages }),
+  })
+  if (!res.ok) console.error('LINE push error:', res.status, await res.text())
+}
+
 export async function replyMessage(replyToken: string, messages: object[]) {
   const res = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',

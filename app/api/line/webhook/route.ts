@@ -7,9 +7,10 @@ import { savePendingAction, getPendingAction, clearPendingAction } from '@/lib/a
 import { executeUpdate } from '@/lib/rules/update'
 import { executeCreate } from '@/lib/rules/create'
 import { executeDelete } from '@/lib/rules/delete'
-import { replyMessage, textMsg, quickReplyMsg } from '@/lib/line/reply'
+import { replyMessage, pushMessage, textMsg, quickReplyMsg } from '@/lib/line/reply'
 import { getWeather } from '@/lib/weather'
 import { confirmationText, successText } from '@/lib/line/messages'
+import { handleSuggestFlow, getSuggestSession, handleSuggestDatePostback, handleSuggestConfirm } from '@/lib/line/suggest'
 import type { ParsedAction } from '@/types/action'
 
 function getAdmin() {
@@ -201,6 +202,10 @@ async function handleCommand(
     return
   }
 
+  // AI 行程提案フロー — グループ連携なしでも使える。既存の pending より優先チェック
+  const suggestHandled = await handleSuggestFlow(text, groupId, userId, replyToken)
+  if (suggestHandled) return
+
   // Fetch trip linked to this group (including tickets nested under events)
   const { data: trip } = await supabase
     .from('trips')
@@ -229,7 +234,8 @@ async function handleCommand(
 
   if (confirmed || cancelled) {
     const pending = await getPendingAction(groupId, userId)
-    if (pending) {
+    // suggest セッションは handleSuggestFlow で処理済みのためスキップ
+    if (pending && (pending.action_json as any).__type !== 'suggest') {
       await clearPendingAction(groupId, userId)
       if (cancelled) {
         await replyMessage(replyToken, [textMsg('已取消，行程未變更。')])
@@ -534,6 +540,9 @@ async function handleCommand(
   if (/^(help|ヘルプ|幫助|說明|使い方)$/i.test(text)) {
     await replyMessage(replyToken, [textMsg(
       `🤖 Tabitomo Bot\n\n` +
+      `✦ AI行程提案\n` +
+      `• @Tabi 沖縄3日提案して\n` +
+      `• @Tabi 京都2泊3日おすすめ行程\n\n` +
       `📖 查詢\n` +
       `• @Tabi 今天的行程\n` +
       `• @Tabi 明日の予定\n` +
@@ -589,6 +598,8 @@ async function handleCommand(
   if (!parsed || parsed.confidence < 0.5) {
     await replyMessage(replyToken, [textMsg(
       `🤖 Tabitomo Bot\n\n` +
+      `✦ AI行程提案\n` +
+      `• @Tabi 沖縄3日提案して\n\n` +
       `📖 查詢\n` +
       `• @Tabi 今天的行程\n` +
       `• @Tabi 明日の予定\n` +
@@ -671,6 +682,23 @@ export async function POST(req: NextRequest) {
   const data = JSON.parse(body)
 
   for (const event of data.events || []) {
+    // Postback events (datetimepicker + Flex confirm buttons)
+    if (event.type === 'postback') {
+      const pbData: string = event.postback?.data || ''
+      const pbGroupId: string = event.source?.groupId || ''
+      const pbUserId: string = event.source?.userId || ''
+      const pbReplyToken: string = event.replyToken
+      if (pbData === 'suggest:date') {
+        await handleSuggestDatePostback(event.postback?.params?.date || '', pbGroupId, pbUserId, pbReplyToken)
+      } else if (pbData === 'suggest:date:skip') {
+        await handleSuggestDatePostback('', pbGroupId, pbUserId, pbReplyToken)
+      } else if (pbData.startsWith('suggest:confirm:')) {
+        const confirmAction = pbData.replace('suggest:confirm:', '') as 'save' | 'redo' | 'cancel'
+        await handleSuggestConfirm(confirmAction, pbGroupId, pbUserId, pbReplyToken)
+      }
+      continue
+    }
+
     if (event.type !== 'message' || event.message?.type !== 'text') continue
 
     const text: string = event.message.text

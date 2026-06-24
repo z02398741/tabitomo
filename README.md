@@ -14,12 +14,16 @@ Plan trips together, share itineraries via LINE, and let AI organize your schedu
 
 ## Features
 
-- **AI Itinerary Generation** — Paste raw text or describe a trip; Gemini 2.5 Flash generates a structured day-by-day plan
+- **AI Itinerary Suggestion (Web)** — Fill a guided form (destination, days, start date, members, budget, travel style, free notes); Gemini 2.5 Flash generates a full day-by-day itinerary shown as a preview before saving
+- **AI Itinerary Import** — Paste raw travel text; Gemini parses it into a structured plan shown as a preview before saving
+- **LINE Bot AI Suggestion** — Trigger step-by-step guided trip planning directly in a LINE chat; uses datetimepicker Flex Message for start date and Flex Message buttons (保存する / やり直す / キャンセル) for final confirmation before saving to DB
 - **LINE OAuth Login** — One-tap sign-in with your LINE account, no password required
-- **LINE Bot (Tabitomo Bot)** — Query today's schedule, upcoming events, or specific dates directly from a LINE group chat; edit events, add/delete, and update trip-level info (人数・予算・交通手段) via natural language
+- **LINE Bot (Tabitomo Bot)** — Query today's schedule, upcoming events, specific dates, or weather directly from a LINE group chat; edit events, add/delete, and update trip-level info (人数・予算・交通手段) via natural language
+- **Weather Forecast** — Real-time 16-day weather per trip day via Open-Meteo; Nominatim (OpenStreetMap) fallback for locations not in GeoNames (e.g. small islands)
 - **Team Collaboration** — Invite up to 20 members via a shareable link; manage member roles and remove members
 - **Ticket & File Attachments** — Upload PDF/image tickets per event; badge shown on event cards; LINE bot sends them inline
 - **Push Notifications** — Event alerts delivered to LINE groups at configurable lead times (optimized cron with DB indexes)
+- **Trip Duplication** — Duplicate any trip with one-click confirmation
 - **Trip Info Editing** — Edit member count, budget, and transport mode directly from the web UI
 - **Drag-and-Drop Reorder** — Reorder trip days with drag handles
 - **Export** — Copy full itinerary as plain text or LINE-formatted message
@@ -64,8 +68,9 @@ Plan trips together, share itineraries via LINE, and let AI organize your schedu
 ### AI
 | | |
 |---|---|
-| Parser / Planner | Google Gemini 2.5 Flash (`@google/generative-ai`) |
+| Parser / Planner | Google Gemini 2.5 Flash (`@google/generative-ai`); auto-retry on 503 + fallback to Gemini 2.0 Flash |
 | LINE Bot NLU | Regex intent parser → Gemini fallback |
+| Suggest Session | Step-by-step state machine stored in `pending_actions` (15-min TTL) |
 | Pending Actions | Confirmation flow with 10-min expiry |
 
 ### Deployment
@@ -106,13 +111,13 @@ graph TD
 ## Database Schema
 
 ```
-trips              — Trip metadata (title, budget, transport)
+trips              — Trip metadata (title, budget, transport, destination)
 trip_days          — Days within a trip (ordered by position)
 events             — Events per day (time, type, note, alert_min)
 tickets            — File attachments per event
 trip_members       — User ↔ Trip association (owner / member, max 20)
 invite_tokens      — Shareable invite links (7-day expiry, multi-use)
-pending_actions    — LINE bot pending confirmations (10-min expiry)
+pending_actions    — LINE bot confirmations (10-min) + AI suggest sessions (15-min)
 user_profiles      — Cached LINE display name & avatar
 audit_logs         — Full change history (INSERT/UPDATE/DELETE) for all tables
 ```
@@ -137,8 +142,9 @@ audit_logs         — Full change history (INSERT/UPDATE/DELETE) for all tables
 | PATCH/DELETE | `/api/events/[id]` | Update / delete event |
 | POST | `/api/tickets` | Upload ticket file |
 | GET | `/api/tickets/[id]/url` | Get signed download URL |
-| POST | `/api/line/webhook` | LINE bot webhook |
+| POST | `/api/line/webhook` | LINE bot webhook (message + postback events) |
 | POST | `/api/parse` | AI text → itinerary JSON |
+| POST | `/api/suggest` | AI suggestion form → itinerary JSON |
 | GET/POST | `/api/notify` | Cron-triggered push alerts |
 | GET | `/api/admin/audit` | Audit log list for a trip (owner only) |
 | POST | `/api/admin/audit/[id]/restore` | Restore a deleted / updated record |
@@ -148,6 +154,15 @@ audit_logs         — Full change history (INSERT/UPDATE/DELETE) for all tables
 ## LINE Bot Commands
 
 Once a LINE group is linked to a trip:
+
+**AI suggestion (no group link required):**
+
+| Input | Action |
+|-------|--------|
+| `@Tabi 沖縄3日提案して` | Start step-by-step AI itinerary suggestion |
+| `@Tabi 京都2泊3日おすすめ行程` | Pre-fills destination + days, asks remaining steps |
+
+The bot guides through: destination → days → start date (datetimepicker) → members → budget → notes → preview (Flex Message confirm)
 
 **Read commands (all members):**
 
@@ -168,6 +183,7 @@ Once a LINE group is linked to a trip:
 | `残り何日` / `還有幾天` | Days remaining until trip ends |
 | `何日目` / `今天第幾天` | Current day number of the trip |
 | `[event]幾點` / `[event]はいつ` | Time lookup by event name |
+| `天気` / `天氣` / `weather` | 16-day weather forecast for the trip destination |
 
 **Edit commands (owner/editor only — requires confirmation):**
 
@@ -250,6 +266,7 @@ create table trips (
   members integer,
   budget text,
   transport text,
+  destination text,
   line_group_id text,
   created_by text not null,
   created_at timestamptz not null default now()
@@ -381,28 +398,34 @@ tabitomo/
 │   │   ├── events/               # Event CRUD
 │   │   ├── tickets/              # File upload + signed URL
 │   │   ├── admin/audit/          # Audit log list + restore endpoint
-│   │   ├── line/webhook/         # LINE bot webhook
+│   │   ├── line/webhook/         # LINE bot webhook (message + postback events)
 │   │   ├── notify/               # Cron push notifications
-│   │   └── parse/                # AI itinerary parser
+│   │   ├── parse/                # AI itinerary parser
+│   │   └── suggest/              # AI itinerary suggestion
 │   ├── components/
 │   │   └── TechBackground.tsx    # Canvas animation (aurora, particles, meteor, parallax)
 │   ├── trips/[id]/               # Trip detail page
 │   ├── import/                   # AI import page
+│   ├── suggest/                  # AI suggestion page
 │   ├── invite/[token]/           # Invite accept page
 │   ├── login/                    # Login page
 │   └── page.tsx                  # Home (trip list)
 ├── components/
-│   ├── HomeClient.tsx            # Trip list UI
+│   ├── HomeClient.tsx            # Trip list UI (with duplicate + AI suggestion CTA)
 │   ├── TripClient.tsx            # Trip detail UI (events, days, modals)
-│   ├── ImportClient.tsx          # AI import UI
+│   ├── ImportClient.tsx          # AI import UI (parse → preview → save)
+│   ├── SuggestClient.tsx         # AI suggestion UI (form → preview → save)
 │   ├── LoginButton.tsx           # LINE login button
 │   └── logo/TabitomoLogo.tsx     # Animated SVG bird mascot
 ├── lib/
 │   ├── ai/gemini.ts              # Gemini 2.5 Flash client (LINE bot NLU)
-│   ├── line/                     # LINE reply / message helpers
+│   ├── line/
+│   │   ├── reply.ts              # LINE reply / push message helpers
+│   │   └── suggest.ts            # LINE bot AI suggest session state machine
 │   ├── rules/                    # LINE bot intent parser (regex + AI fallback)
 │   ├── actions/pending.ts        # Pending confirmation store
 │   ├── supabase/                 # Supabase clients (browser / server / admin)
+│   ├── weather.ts                # Open-Meteo weather + Nominatim geocode fallback
 │   └── trips.ts                  # Trip data access layer
 └── types/
     ├── index.ts                  # Trip, Event, TripDay, Ticket, TripMember
