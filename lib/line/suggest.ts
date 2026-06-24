@@ -15,13 +15,14 @@ function getAdmin() {
 
 // ── Session type ───────────────────────────────────────────────
 export type SuggestStep =
-  | 'destination' | 'days' | 'members' | 'budget' | 'note' | 'generating' | 'preview'
+  | 'destination' | 'days' | 'startDate' | 'members' | 'budget' | 'note' | 'generating' | 'preview'
 
 export interface SuggestSession {
   __type: 'suggest'
   step: SuggestStep
   destination?: string
   days?: number
+  startDate?: string    // YYYY-MM-DD
   members?: number | null
   budget?: string       // 'budget' | 'moderate' | 'luxury'
   freeNote?: string
@@ -97,6 +98,7 @@ export async function generateTrip(session: SuggestSession): Promise<any> {
   const lines = [
     `目的地: ${session.destination}`,
     `旅行日数: ${session.days}日間（${(session.days ?? 3) - 1}泊${session.days}日）`,
+    session.startDate ? `開始日: ${session.startDate}` : null,
     session.members ? `人数: ${session.members}人` : null,
     session.budget ? `予算感: ${budgetMap[session.budget] ?? session.budget}` : null,
     session.freeNote?.trim() ? `備考: ${session.freeNote.trim()}` : null,
@@ -138,8 +140,6 @@ export function formatPreviewMessages(trip: any): object[] {
     dayBlocks.push(lines.join('\n'))
   }
 
-  const confirm = `\n\nこの内容で保存しますか？`
-
   // Pack into messages ≤4800 chars each
   const messages: object[] = []
   let current = header
@@ -151,14 +151,8 @@ export function formatPreviewMessages(trip: any): object[] {
       current += block
     }
   }
-  // Last message with confirm prompt + quick reply
-  messages.push(
-    quickReplyMsg(current + confirm, [
-      { label: '✅ 保存する', text: '保存する' },
-      { label: '🔄 やり直す', text: 'やり直す' },
-      { label: '❌ キャンセル', text: 'キャンセル' },
-    ])
-  )
+  messages.push(textMsg(current))
+  messages.push(makeConfirmFlex())
   return messages
 }
 
@@ -236,6 +230,82 @@ export function makeNoteMsg() {
   return qr('📝 その他の希望があれば教えてください（スキップ可）\n例：子連れOKな行程で / 海が見えるレストランを入れてほしい', [
     { label: 'スキップ', text: 'スキップ' },
   ])
+}
+
+export function makeStartDateFlex(): object {
+  return {
+    type: 'flex',
+    altText: '旅行開始日を選んでください',
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: '📅 旅行の開始日は？', weight: 'bold', size: 'md', wrap: true },
+          { type: 'text', text: 'スキップすると未設定のまま保存されます', size: 'sm', color: '#aaaaaa', wrap: true, margin: 'sm' },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          {
+            type: 'button',
+            style: 'primary',
+            color: '#6c8ef5',
+            action: { type: 'datetimepicker', label: '📅 日付を選ぶ', data: 'suggest:date', mode: 'date' },
+          },
+          {
+            type: 'button',
+            style: 'secondary',
+            action: { type: 'postback', label: 'スキップ', data: 'suggest:date:skip' },
+          },
+        ],
+      },
+    },
+  }
+}
+
+export function makeConfirmFlex(): object {
+  return {
+    type: 'flex',
+    altText: 'この内容で保存しますか？',
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: '✦ 行程を保存しますか？', weight: 'bold', size: 'md', wrap: true },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          {
+            type: 'button',
+            style: 'primary',
+            color: '#6c8ef5',
+            action: { type: 'postback', label: '✅ 保存する', data: 'suggest:confirm:save' },
+          },
+          {
+            type: 'button',
+            style: 'secondary',
+            action: { type: 'postback', label: '🔄 やり直す', data: 'suggest:confirm:redo' },
+          },
+          {
+            type: 'button',
+            style: 'secondary',
+            action: { type: 'postback', label: '❌ キャンセル', data: 'suggest:confirm:cancel' },
+          },
+        ],
+      },
+    },
+  }
 }
 
 // ── Main entry point ──────────────────────────────────────────
@@ -328,10 +398,10 @@ export async function handleSuggestFlow(
     await replyMessage(replyToken, [makeDaysQr()])
     return true
   }
-  // Both destination and days known — go to members
-  initial.step = 'members'
+  // Both destination and days known — go to startDate
+  initial.step = 'startDate'
   await saveSuggestSession(groupId, userId, initial)
-  await replyMessage(replyToken, [makeMembersQr()])
+  await replyMessage(replyToken, [makeStartDateFlex()])
   return true
 }
 
@@ -363,9 +433,21 @@ async function processStep(
       await replyMessage(replyToken, [makeDaysQr()])
       return true
     }
-    const next = { ...session, days: n, step: 'members' as SuggestStep }
+    const next = { ...session, days: n, step: 'startDate' as SuggestStep }
     await saveSuggestSession(groupId, userId, next)
-    await replyMessage(replyToken, [makeMembersQr()])
+    await replyMessage(replyToken, [makeStartDateFlex()])
+    return true
+  }
+
+  if (session.step === 'startDate') {
+    // Text fallback: "スキップ" skips, anything else re-shows the Flex
+    if (/スキップ|skip/i.test(trim)) {
+      const next = { ...session, startDate: undefined, step: 'members' as SuggestStep }
+      await saveSuggestSession(groupId, userId, next)
+      await replyMessage(replyToken, [makeMembersQr()])
+    } else {
+      await replyMessage(replyToken, [makeStartDateFlex()])
+    }
     return true
   }
 
@@ -404,6 +486,7 @@ async function processStep(
       `✦ 以下の条件で行程を生成します：`,
       `📍 目的地：${next.destination}`,
       `📅 ${next.days}日間`,
+      next.startDate ? `🗓 開始日：${next.startDate}` : null,
       next.members ? `👥 ${next.members}名` : null,
       next.budget ? `💰 ${budgetLabel[next.budget] ?? next.budget}` : null,
       next.freeNote ? `📝 ${next.freeNote}` : null,
@@ -430,4 +513,57 @@ async function processStep(
   }
 
   return false
+}
+
+// ── Postback handlers (datetimepicker + confirm Flex buttons) ──
+
+/**
+ * Called when LINE fires a postback event from the datetimepicker or skip button.
+ * date: YYYY-MM-DD from the picker, or '' when skipped.
+ */
+export async function handleSuggestDatePostback(
+  date: string,
+  groupId: string,
+  userId: string,
+  replyToken: string,
+): Promise<void> {
+  const session = await getSuggestSession(groupId, userId)
+  if (!session || session.step !== 'startDate') return
+  const next = { ...session, startDate: date || undefined, step: 'members' as SuggestStep }
+  await saveSuggestSession(groupId, userId, next)
+  await replyMessage(replyToken, [makeMembersQr()])
+}
+
+/**
+ * Called when the user taps 保存する / やり直す / キャンセル in the confirm Flex.
+ */
+export async function handleSuggestConfirm(
+  action: 'save' | 'redo' | 'cancel',
+  groupId: string,
+  userId: string,
+  replyToken: string,
+): Promise<void> {
+  const pushTo = groupId || userId
+  const session = await getSuggestSession(groupId, userId)
+  if (!session || session.step !== 'preview') return
+
+  if (action === 'save') {
+    await replyMessage(replyToken, [textMsg('💾 保存中...')])
+    try {
+      const tripId = await saveTrip(session.generatedTrip, userId)
+      await clearSuggestSession(groupId, userId)
+      await pushMessage(pushTo, [textMsg(
+        `✅ 保存しました！\n📍 ${session.generatedTrip?.title}\n\nApp で確認・修正できます：\nhttps://tabitomo-gilt.vercel.app/trips/${tripId}`
+      )])
+    } catch (e: any) {
+      await pushMessage(pushTo, [textMsg(`⚠️ 保存に失敗しました: ${e.message}`)])
+    }
+  } else if (action === 'redo') {
+    await clearSuggestSession(groupId, userId)
+    await replyMessage(replyToken, [textMsg('🔄 最初からやり直します。\n\n📍 目的地を教えてください\n例：沖縄・京都・台北・ソウル')])
+    await saveSuggestSession(groupId, userId, { __type: 'suggest', action: 'suggest', step: 'destination', confidence: 0, raw: '' })
+  } else {
+    await clearSuggestSession(groupId, userId)
+    await replyMessage(replyToken, [textMsg('❌ キャンセルしました。')])
+  }
 }

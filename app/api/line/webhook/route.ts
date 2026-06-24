@@ -10,7 +10,7 @@ import { executeDelete } from '@/lib/rules/delete'
 import { replyMessage, pushMessage, textMsg, quickReplyMsg } from '@/lib/line/reply'
 import { getWeather } from '@/lib/weather'
 import { confirmationText, successText } from '@/lib/line/messages'
-import { handleSuggestFlow, getSuggestSession } from '@/lib/line/suggest'
+import { handleSuggestFlow, getSuggestSession, handleSuggestDatePostback, handleSuggestConfirm } from '@/lib/line/suggest'
 import type { ParsedAction } from '@/types/action'
 
 function getAdmin() {
@@ -682,6 +682,23 @@ export async function POST(req: NextRequest) {
   const data = JSON.parse(body)
 
   for (const event of data.events || []) {
+    // Postback events (datetimepicker + Flex confirm buttons)
+    if (event.type === 'postback') {
+      const pbData: string = event.postback?.data || ''
+      const pbGroupId: string = event.source?.groupId || ''
+      const pbUserId: string = event.source?.userId || ''
+      const pbReplyToken: string = event.replyToken
+      if (pbData === 'suggest:date') {
+        await handleSuggestDatePostback(event.postback?.params?.date || '', pbGroupId, pbUserId, pbReplyToken)
+      } else if (pbData === 'suggest:date:skip') {
+        await handleSuggestDatePostback('', pbGroupId, pbUserId, pbReplyToken)
+      } else if (pbData.startsWith('suggest:confirm:')) {
+        const confirmAction = pbData.replace('suggest:confirm:', '') as 'save' | 'redo' | 'cancel'
+        await handleSuggestConfirm(confirmAction, pbGroupId, pbUserId, pbReplyToken)
+      }
+      continue
+    }
+
     if (event.type !== 'message' || event.message?.type !== 'text') continue
 
     const text: string = event.message.text
