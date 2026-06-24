@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { parseRule } from '@/lib/rules/parser'
 import { parseWithGemini, type EventSummary } from '@/lib/ai/gemini'
 import { savePendingAction, getPendingAction, clearPendingAction } from '@/lib/actions/pending'
@@ -11,6 +10,7 @@ import { executeDelete } from '@/lib/rules/delete'
 import { replyMessage, pushMessage, textMsg, quickReplyMsg } from '@/lib/line/reply'
 import { getWeather } from '@/lib/weather'
 import { confirmationText, successText } from '@/lib/line/messages'
+import { handleSuggestFlow, getSuggestSession } from '@/lib/line/suggest'
 import type { ParsedAction } from '@/types/action'
 
 function getAdmin() {
@@ -18,82 +18,6 @@ function getAdmin() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
-}
-
-// ── AI 行程提案 ────────────────────────────────────────────────
-const SUGGEST_SYSTEM = `You are a travel planning assistant. Create a detailed, realistic travel itinerary.
-Return ONLY valid JSON (no markdown) with this exact shape:
-{"title":"string","members":null,"budget":null,"transport":null,"destination":"string","days":[{"label":"Day1｜8/1（金）","date":"YYYY-MM-DD","events":[{"time":"HH:MM","title":"string","type":"transport|gather|meal|activity|stay|free","note":"","location":null,"cost":null,"alert_min":0}]}]}
-Rules: Each day 6-8 events, realistic times, specific real place names, estimated JPY costs for meals/admissions.`
-
-function parseSuggestCommand(text: string): { destination: string; days: number } | null {
-  if (!/提案|おすすめ.*行程|行程.*提案|AI行程|コース提案|旅行提案/.test(text)) return null
-  const nightsM = text.match(/(\d+)\s*泊/)
-  const daysM   = text.match(/(\d+)\s*(?:日間?|天)/)
-  let days = 3
-  if (nightsM) days = parseInt(nightsM[1]) + 1
-  else if (daysM) days = parseInt(daysM[1])
-  const dest = text
-    .replace(/提案して?|おすすめ|行程|旅行|して|ください|AI|お願い|生成|コース/g, '')
-    .replace(/\d+\s*(?:泊\d*日?|日間?|天)/g, '')
-    .replace(/[のでへをにがはも。、！？!?\s@Tabi]+/gi, '')
-    .trim()
-  if (!dest) return null
-  return { destination: dest, days: Math.max(1, Math.min(14, days)) }
-}
-
-async function callGeminiForSuggest(prompt: string): Promise<any> {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-  const tryModel = async (name: string) => {
-    const model = genAI.getGenerativeModel({ model: name })
-    const result = await model.generateContent(prompt)
-    const raw = result.response.text().trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
-    return JSON.parse(raw)
-  }
-  const delays = [1000, 2000]
-  for (let i = 0; i <= delays.length; i++) {
-    try { return await tryModel('gemini-2.5-flash') }
-    catch (e: any) {
-      if (!e.message?.includes('503') || i === delays.length) throw e
-      await new Promise(r => setTimeout(r, delays[i]))
-    }
-  }
-  return tryModel('gemini-2.0-flash')
-}
-
-async function saveGeneratedTrip(parsed: any, userId: string): Promise<string> {
-  const supabase = getAdmin()
-  const { data: newTrip, error } = await supabase
-    .from('trips')
-    .insert({
-      title: parsed.title || '旅行行程',
-      members: parsed.members ?? null,
-      budget: parsed.budget ?? null,
-      transport: parsed.transport ?? null,
-      destination: parsed.destination ?? null,
-      created_by: userId,
-    })
-    .select().single()
-  if (error || !newTrip) throw new Error(error?.message || 'trip insert failed')
-  await supabase.from('trip_members').insert({ trip_id: newTrip.id, user_id: userId, role: 'owner' })
-  const days = [...(parsed.days ?? [])].sort((a: any, b: any) => a.position - b.position)
-  for (let i = 0; i < days.length; i++) {
-    const day = days[i]
-    const { data: newDay } = await supabase
-      .from('trip_days')
-      .insert({ trip_id: newTrip.id, label: day.label, date: day.date || null, position: i })
-      .select().single()
-    if (newDay && day.events?.length) {
-      await supabase.from('events').insert(
-        day.events.map((ev: any) => ({
-          day_id: newDay.id, time: ev.time, title: ev.title,
-          type: ev.type, note: ev.note || '', location: ev.location ?? null,
-          cost: ev.cost ?? null, alert_min: ev.alert_min ?? 0,
-        }))
-      )
-    }
-  }
-  return newTrip.id
 }
 
 function verifySignature(body: string, signature: string): boolean {
@@ -278,41 +202,16 @@ async function handleCommand(
     return
   }
 
+  // AI 行程提案フロー — グループ連携なしでも使える。既存の pending より優先チェック
+  const suggestHandled = await handleSuggestFlow(text, groupId, userId, replyToken)
+  if (suggestHandled) return
+
   // Fetch trip linked to this group (including tickets nested under events)
   const { data: trip } = await supabase
     .from('trips')
     .select('*, days:trip_days(*, events(*, tickets(*)))')
     .eq('line_group_id', groupId)
     .single()
-
-  // AI 行程提案 — グループ連携なしでも使える
-  const suggestParams = parseSuggestCommand(text)
-  if (suggestParams) {
-    const pushTo = groupId || userId
-    // Reply immediately to acknowledge (replyToken consumed here)
-    await replyMessage(replyToken, [textMsg(
-      `✦ AI行程を生成中です...\n📍 目的地：${suggestParams.destination}\n📅 ${suggestParams.days}日間\n少々お待ちください（10〜20秒）`
-    )])
-    try {
-      const prompt = `${SUGGEST_SYSTEM}\n\n以下の条件で旅行行程を作成してください:\n目的地: ${suggestParams.destination}\n旅行日数: ${suggestParams.days}日間（${suggestParams.days - 1}泊${suggestParams.days}日）`
-      const parsed = await callGeminiForSuggest(prompt)
-      const tripId = await saveGeneratedTrip(parsed, userId)
-      const totalEvents = (parsed.days || []).reduce((a: number, d: any) => a + (d.events?.length || 0), 0)
-      const lines = [
-        `✅ 行程を生成しました！`,
-        `📍 ${parsed.title}`,
-        `📅 ${(parsed.days || []).length}日間 · ${totalEvents}件`,
-        ``,
-        `App で確認・修正できます：`,
-        `https://tabitomo-gilt.vercel.app/trips/${tripId}`,
-      ]
-      await pushMessage(pushTo, [textMsg(lines.join('\n'))])
-    } catch (e: any) {
-      console.error('[suggest] error:', e)
-      await pushMessage(pushTo, [textMsg(`⚠️ 生成に失敗しました: ${e.message || 'エラー'}`)])
-    }
-    return
-  }
 
   if (!trip) {
     await replyMessage(replyToken, [textMsg('⚠️ このグループにはまだ行程が登録されていません。\nhttps://tabitomo-gilt.vercel.app')])
@@ -335,7 +234,8 @@ async function handleCommand(
 
   if (confirmed || cancelled) {
     const pending = await getPendingAction(groupId, userId)
-    if (pending) {
+    // suggest セッションは handleSuggestFlow で処理済みのためスキップ
+    if (pending && (pending.action_json as any).__type !== 'suggest') {
       await clearPendingAction(groupId, userId)
       if (cancelled) {
         await replyMessage(replyToken, [textMsg('已取消，行程未變更。')])
