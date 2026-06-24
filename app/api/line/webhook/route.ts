@@ -152,15 +152,19 @@ function resolveEvent(events: EventSummary[], title: string): EventSummary | nul
 }
 
 function resolveDay(trip: any, hint: 'today' | 'tomorrow' | 'dayAfterTomorrow' | undefined): string | null {
+  const days = sortedDays(trip.days ?? [])
   const today = new Date().toISOString().split('T')[0]
   if (!hint) {
-    const day = trip.days?.find((d: any) => d.date === today) ?? trip.days?.[0]
+    const day = days.find((d: any) => d.date === today) ?? days[0]
     return day?.id ?? null
   }
   const offset = hint === 'today' ? 0 : hint === 'tomorrow' ? 1 : 2
   const target = new Date(Date.now() + offset * 86_400_000).toISOString().split('T')[0]
-  const day = trip.days?.find((d: any) => d.date === target)
-  return day?.id ?? null
+  // Try exact date match first; fall back to position-based index when trip has no dates
+  const byDate = days.find((d: any) => d.date === target)
+  if (byDate) return byDate.id
+  const byIndex = days[offset] ?? days[days.length - 1]
+  return byIndex?.id ?? null
 }
 
 async function handleCommand(
@@ -269,10 +273,172 @@ async function handleCommand(
     return
   }
 
+  // --- EXTENDED READ COMMANDS (all members) ---
+
+  // 次の予定 / 下一個
+  if (/次の予定|下一個|下一个|接下來/.test(lower)) {
+    const jstNow = new Date(Date.now() + 9 * 60 * 60 * 1000)
+    const todayJST = jstNow.toISOString().slice(0, 10)
+    const nowTime = jstNow.toISOString().slice(11, 16)
+    const todayDay = sortedDays(trip.days ?? []).find((d: any) => d.date === todayJST)
+    if (todayDay) {
+      const next = sortedEvents(todayDay.events ?? []).find((ev: any) => ev.time > nowTime)
+      if (next) {
+        const lines = [
+          `⏰ 次の予定`,
+          `${EVENT_ICON[next.type] ?? '•'} ${next.time} ${next.title}`,
+          next.note ? `📝 ${next.note}` : '',
+        ].filter(Boolean)
+        await replyMessage(replyToken, [textMsg(lines.join('\n'))])
+        return
+      }
+    }
+    await replyMessage(replyToken, [textMsg('今日はこれ以上の予定がありません')])
+    return
+  }
+
+  // 今日の残り / 今天剩下
+  if (/今日の残り|今天剩下|剩下的|残り予定/.test(lower)) {
+    const jstNow = new Date(Date.now() + 9 * 60 * 60 * 1000)
+    const todayJST = jstNow.toISOString().slice(0, 10)
+    const nowTime = jstNow.toISOString().slice(11, 16)
+    const todayDay = sortedDays(trip.days ?? []).find((d: any) => d.date === todayJST)
+    if (todayDay) {
+      const remaining = sortedEvents(todayDay.events ?? []).filter((ev: any) => ev.time >= nowTime)
+      if (remaining.length) {
+        const lines = [`📅 ${todayDay.label} の残り (${remaining.length}件)`]
+        for (const ev of remaining) {
+          lines.push(`${EVENT_ICON[ev.type] ?? '•'} ${ev.time} ${ev.title}`)
+          if (ev.note) lines.push(`   📝 ${ev.note}`)
+        }
+        await replyMessage(replyToken, [textMsg(lines.join('\n'))])
+        return
+      }
+    }
+    await replyMessage(replyToken, [textMsg('今日はこれ以上の予定がありません')])
+    return
+  }
+
+  // 成員 / メンバー一覧
+  if (/^(成員|メンバー|参加者|member)(一覧|リスト|名單|list)?[\?？]?$/i.test(text.trim())) {
+    const { data: memberRows } = await supabase
+      .from('trip_members').select('user_id, role').eq('trip_id', trip.id)
+    const userIds = (memberRows ?? []).map((m: any) => m.user_id)
+    const { data: profiles } = await supabase
+      .from('user_profiles').select('id, name').in('id', userIds)
+    const profileMap: Record<string, string> = {}
+    for (const p of profiles ?? []) profileMap[p.id] = p.name ?? p.id
+    const lines = [`👥 メンバー (${memberRows?.length ?? 0}名)`]
+    for (const m of (memberRows ?? [])) {
+      const name = profileMap[(m as any).user_id] ?? (m as any).user_id
+      lines.push((m as any).role === 'owner' ? `👑 ${name}` : `• ${name}`)
+    }
+    await replyMessage(replyToken, [textMsg(lines.join('\n'))])
+    return
+  }
+
+  // 概要 / 旅行概要
+  if (/概要|旅行情報/.test(lower)) {
+    const days = sortedDays(trip.days ?? [])
+    const dated = days.filter((d: any) => d.date)
+    const first = dated[0]?.date
+    const last = dated[dated.length - 1]?.date
+    const range = first && last
+      ? `${first.slice(5).replace('-', '/')} 〜 ${last.slice(5).replace('-', '/')}`
+      : '日程未設定'
+    const lines = [
+      `📋 ${trip.title}`,
+      trip.transport ? `🚢 ${trip.transport}` : '',
+      trip.budget ? `💰 ${trip.budget}` : '',
+      `📅 ${days.length}日間 (${range})`,
+    ].filter(Boolean)
+    await replyMessage(replyToken, [textMsg(lines.join('\n'))])
+    return
+  }
+
+  // 最後一天 / 最終日
+  if (/最後一天|最終日|最後の日|last day/.test(lower)) {
+    const lastDay = [...sortedDays(trip.days ?? [])].pop()
+    if (lastDay) {
+      const messages = await getDayEventsMessages(lastDay, 'この日の予定はありません')
+      await replyMessage(replyToken, messages)
+      return
+    }
+  }
+
+  // 住宿 / 宿泊
+  if (/^(住宿|宿泊|ホテル|チェックイン)/.test(lower)) {
+    const lines = ['🏨 宿泊']
+    for (const day of sortedDays(trip.days ?? []))
+      for (const ev of sortedEvents(day.events ?? []))
+        if (ev.type === 'stay') lines.push(`${day.label} | ${ev.time} ${ev.title}`)
+    if (lines.length === 1) lines.push('宿泊イベントは登録されていません')
+    await replyMessage(replyToken, [textMsg(lines.join('\n'))])
+    return
+  }
+
+  // 交通 / 移動
+  if (/^(交通|フライト|transport)/.test(lower)) {
+    const lines = ['🚢 交通']
+    for (const day of sortedDays(trip.days ?? []))
+      for (const ev of sortedEvents(day.events ?? []))
+        if (ev.type === 'transport') lines.push(`${day.label} | ${ev.time} ${ev.title}`)
+    if (lines.length === 1) lines.push('交通イベントは登録されていません')
+    await replyMessage(replyToken, [textMsg(lines.join('\n'))])
+    return
+  }
+
+  // 残り何日 / 還有幾天
+  if (/残り何日|還有幾天|あと何日|幾天後結束/.test(lower)) {
+    const todayJST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const dated = sortedDays(trip.days ?? []).filter((d: any) => d.date)
+    const lastDay = dated[dated.length - 1]
+    if (!lastDay) { await replyMessage(replyToken, [textMsg('日程が設定されていません')]); return }
+    const diff = Math.ceil((new Date(lastDay.date).getTime() - new Date(todayJST).getTime()) / 86_400_000)
+    const msg = diff < 0 ? '旅行はすでに終了しています'
+      : diff === 0 ? `🗓️ 今日が最終日です！\n${lastDay.label}`
+      : `🗓️ あと ${diff} 日\n最終日: ${lastDay.label}（${lastDay.date.slice(5).replace('-', '/')}）`
+    await replyMessage(replyToken, [textMsg(msg)])
+    return
+  }
+
+  // 何日目 / 第幾天
+  if (/何日目|第幾天|今天第幾天|旅行何日目/.test(lower)) {
+    const todayJST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const dated = sortedDays(trip.days ?? []).filter((d: any) => d.date)
+    const idx = dated.findIndex((d: any) => d.date === todayJST)
+    let msg: string
+    if (idx >= 0) {
+      msg = `📍 旅行 ${idx + 1} 日目\n${dated[idx].label}`
+    } else {
+      const first = dated[0]
+      msg = first && first.date > todayJST
+        ? `旅行開始まであと ${Math.ceil((new Date(first.date).getTime() - new Date(todayJST).getTime()) / 86_400_000)} 日です`
+        : '今日は旅行の日程外です'
+    }
+    await replyMessage(replyToken, [textMsg(msg)])
+    return
+  }
+
+  // [event]幾點 / [event]はいつ — event time search by keyword
+  const timeQueryMatch = text.match(/^(.+?)(幾點|幾時|はいつ|は何時|何時から|在幾點)[\?？]?$/)
+  if (timeQueryMatch) {
+    const keyword = timeQueryMatch[1].trim()
+    const found: string[] = []
+    for (const day of sortedDays(trip.days ?? []))
+      for (const ev of sortedEvents(day.events ?? []))
+        if (ev.title.includes(keyword)) found.push(`${day.label} ${ev.time} ${ev.title}`)
+    const msg = found.length
+      ? `🔍 「${keyword}」\n\n${found.join('\n')}`
+      : `「${keyword}」という予定は見つかりませんでした`
+    await replyMessage(replyToken, [textMsg(msg)])
+    return
+  }
+
   // If user cannot edit, skip AI parse
   if (!canEdit) {
     await replyMessage(replyToken, [textMsg(
-      `🤖 Tabitomo Bot\n\n使い方：\n• 今日の予定は？\n• 行程を見せて\n\n✏️ 変更はアプリから：\nhttps://tabitomo-gilt.vercel.app`
+      `🤖 Tabitomo Bot\n\n使い方：\n• 今日の予定は？\n• 行程を見せて\n• 次の予定\n• 成員\n\n✏️ 変更はアプリから：\nhttps://tabitomo-gilt.vercel.app`
     )])
     return
   }
@@ -288,17 +454,28 @@ async function handleCommand(
       `• @Tabi 明日の予定\n` +
       `• @Tabi 7/19の予定\n` +
       `• @Tabi Day2\n` +
-      `• @Tabi 全程行程\n\n` +
+      `• @Tabi 全程行程\n` +
+      `• @Tabi 次の予定\n` +
+      `• @Tabi 今天剩下\n` +
+      `• @Tabi 晚餐幾點\n` +
+      `• @Tabi 成員\n` +
+      `• @Tabi 概要\n` +
+      `• @Tabi 最終日\n` +
+      `• @Tabi 住宿\n` +
+      `• @Tabi 交通\n` +
+      `• @Tabi 残り何日\n` +
+      `• @Tabi 何日目\n\n` +
       `✏️ 修改時間\n` +
       `• @Tabi 咖啡廳改下午三點\n` +
       `• @Tabi 晚餐改18:30\n` +
-      `• @Tabi 集合延後30分\n\n` +
+      `• @Tabi 集合延後30分\n` +
+      `• @Tabi 集合提前30分\n\n` +
       `➕ 新增行程\n` +
       `• @Tabi 新增下午兩點 海灘散步\n` +
       `• @Tabi 明天下午三點加咖啡廳\n\n` +
       `🗑️ 取消行程\n` +
       `• @Tabi 取消晚餐\n` +
-      `• @Tabi 刪除咖啡廳\n\n` +
+      `• @Tabi 把晚餐刪掉\n\n` +
       `⚠️ 變更需要確認，Bot 會先詢問你\n` +
       `✏️ 複雜操作請在 App 中修改：\nhttps://tabitomo-gilt.vercel.app`
     )])
