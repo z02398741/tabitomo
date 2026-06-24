@@ -119,6 +119,18 @@ export async function deleteEvent(id: string) {
   if (error) throw error
 }
 
+export async function updateDay(id: string, patch: Partial<Pick<TripDay, 'label' | 'date'>>) {
+  const supabase = getAdmin()
+  const { data, error } = await supabase
+    .from('trip_days')
+    .update(patch)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 export async function deleteDay(id: string) {
   const supabase = getAdmin()
   const { error } = await supabase
