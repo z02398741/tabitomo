@@ -412,7 +412,7 @@ export async function handleSuggestFlow(
   else if (daysM) extractedDays = parseInt(daysM[1])
 
   const rawDest = text
-    .replace(/提案して?|おすすめ|行程|旅行|して|ください|AI|お願い|生成|コース/g, '')
+    .replace(/AI行程提案?|コース提案|旅行提案?|提案(して?)?|おすすめ|行程|旅行|して|ください|AI|お願い|生成|コース/g, '')
     .replace(/\d+\s*(?:泊\d*日?|日間?|天)/g, '')
     .replace(/[のでへをにがはも。、！？!?\s@Tabi]+/gi, '')
     .trim()
@@ -457,7 +457,10 @@ export async function processStep(
   const trim = text.trim()
 
   if (session.step === 'destination') {
-    const dest = trim.replace(/[のでへをにがはも。、！？!?]+$/g, '').trim()
+    const dest = trim
+      .replace(/AI行程提案?|コース提案|旅行提案?|提案(して?)?|おすすめ|行程|旅行|AI|お願い|生成|コース/g, '')
+      .replace(/[のでへをにがはも。、！？!?]+$/g, '')
+      .trim()
     if (!dest) {
       await replyMessage(replyToken, [textMsg('📍 目的地を入力してください（例：沖縄・京都・台北）')])
       return true
