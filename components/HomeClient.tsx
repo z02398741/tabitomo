@@ -164,6 +164,7 @@ function TripCard({ trip, onClick, onDelete, onDuplicate }: {
 }) {
   const [hov, setHov] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmDuplicate, setConfirmDuplicate] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
   const status   = tripStatus(trip.days)
   const countdown = daysUntil(trip.days)
@@ -182,10 +183,17 @@ function TripCard({ trip, onClick, onDelete, onDuplicate }: {
   const handleCancel = (e: React.MouseEvent) => {
     e.stopPropagation()
     setConfirmDelete(false)
+    setConfirmDuplicate(false)
   }
 
-  const handleDuplicateClick = async (e: React.MouseEvent) => {
+  const handleDuplicateClick = (e: React.MouseEvent) => {
     e.stopPropagation()
+    setConfirmDuplicate(true)
+  }
+
+  const handleDuplicateConfirm = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setConfirmDuplicate(false)
     setDuplicating(true)
     await onDuplicate()
     setDuplicating(false)
@@ -194,7 +202,7 @@ function TripCard({ trip, onClick, onDelete, onDuplicate }: {
   return (
     <div onClick={onClick}
       onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => { setHov(false); setConfirmDelete(false) }}
+      onMouseLeave={() => { setHov(false); setConfirmDelete(false); setConfirmDuplicate(false) }}
       style={{ background: hov ? T.cardHov : T.card,
         border: `1px solid ${hov ? T.accent+'55' : T.border}`,
         borderRadius:'16px', padding:'18px 20px', cursor:'pointer',
@@ -223,13 +231,40 @@ function TripCard({ trip, onClick, onDelete, onDuplicate }: {
             )}
           </div>
         </div>
-        {!confirmDelete ? (
+        {confirmDuplicate ? (
+          <div onClick={e => e.stopPropagation()}
+            style={{ flexShrink:0, display:'flex', alignItems:'center',
+              gap:'6px', marginLeft:'12px' }}>
+            <span style={{ fontSize:'11px', color:T.textSec }}>複製しますか？</span>
+            <button onClick={handleDuplicateConfirm} disabled={duplicating}
+              style={{ padding:'4px 10px', borderRadius:'7px', border:'none',
+                background:T.accent, color:'#fff', cursor:'pointer',
+                fontSize:'11px', fontWeight:600 }}>{duplicating ? '...' : '複製'}</button>
+            <button onClick={handleCancel}
+              style={{ padding:'4px 10px', borderRadius:'7px',
+                border:`1px solid ${T.border}`, background:'none',
+                color:T.textSec, cursor:'pointer', fontSize:'11px' }}>取消</button>
+          </div>
+        ) : confirmDelete ? (
+          <div onClick={e => e.stopPropagation()}
+            style={{ flexShrink:0, display:'flex', alignItems:'center',
+              gap:'6px', marginLeft:'12px' }}>
+            <span style={{ fontSize:'11px', color:T.textSec }}>削除しますか？</span>
+            <button onClick={handleConfirm}
+              style={{ padding:'4px 10px', borderRadius:'7px', border:'none',
+                background:'#f06292', color:'#fff', cursor:'pointer',
+                fontSize:'11px', fontWeight:600 }}>削除</button>
+            <button onClick={handleCancel}
+              style={{ padding:'4px 10px', borderRadius:'7px',
+                border:`1px solid ${T.border}`, background:'none',
+                color:T.textSec, cursor:'pointer', fontSize:'11px' }}>取消</button>
+          </div>
+        ) : (
           <div style={{ flexShrink:0, display:'flex', alignItems:'center',
             gap:'4px', marginLeft:'12px', opacity: hov ? 1 : 0,
             transition:'opacity .15s' }}>
             <button
               onClick={handleDuplicateClick}
-              disabled={duplicating}
               style={{ padding:'4px 8px', borderRadius:'8px',
                 border:`1px solid transparent`, background:'none',
                 color:T.textDim, cursor:'pointer', display:'flex',
@@ -245,7 +280,7 @@ function TripCard({ trip, onClick, onDelete, onDuplicate }: {
                 ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent'
               }}
               title="複製"
-            >{duplicating ? '...' : Ico.copy}</button>
+            >{Ico.copy}</button>
             <button
               onClick={handleDeleteClick}
               style={{ padding:'4px 8px', borderRadius:'8px',
@@ -263,20 +298,6 @@ function TripCard({ trip, onClick, onDelete, onDuplicate }: {
               }}
               title="削除"
             >×</button>
-          </div>
-        ) : (
-          <div onClick={e => e.stopPropagation()}
-            style={{ flexShrink:0, display:'flex', alignItems:'center',
-              gap:'6px', marginLeft:'12px' }}>
-            <span style={{ fontSize:'11px', color:T.textSec }}>削除しますか？</span>
-            <button onClick={handleConfirm}
-              style={{ padding:'4px 10px', borderRadius:'7px', border:'none',
-                background:'#f06292', color:'#fff', cursor:'pointer',
-                fontSize:'11px', fontWeight:600 }}>削除</button>
-            <button onClick={handleCancel}
-              style={{ padding:'4px 10px', borderRadius:'7px',
-                border:`1px solid ${T.border}`, background:'none',
-                color:T.textSec, cursor:'pointer', fontSize:'11px' }}>取消</button>
           </div>
         )}
       </div>
