@@ -14,7 +14,9 @@ Plan trips together, share itineraries via LINE, and let AI organize your schedu
 
 ## Features
 
-- **AI Itinerary Suggestion (Web)** — Fill a guided form (destination, days, start date, members, budget, travel style, free notes); Gemini 2.5 Flash generates a full day-by-day itinerary shown as a preview before saving
+- **AI Itinerary Suggestion (Web)** — Fill a guided form (destination, days, start date, members, budget, travel style, free notes); the Travel Agent fetches real places and Gemini 2.5 Flash generates a full day-by-day itinerary shown as a preview before saving
+- **Travel Agent (Real Place Enrichment)** — Before planning, the agent geocodes the destination (Nominatim) and pulls real tourism spots and restaurants from OpenStreetMap (Overpass API), ranks them by rating / distance / budget / personal preference, and feeds the top candidates into the planner so itineraries use actual named venues. Degrades gracefully to a plain plan if any provider is unavailable
+- **Recommended Spots Panel** — Trip detail page shows an おすすめスポット panel (spots + restaurants with distance badges); one tap adds any spot to a chosen trip day
 - **AI Itinerary Import** — Paste raw travel text; Gemini parses it into a structured plan shown as a preview before saving
 - **LINE Bot AI Suggestion** — Trigger step-by-step guided trip planning directly in a LINE chat; uses datetimepicker Flex Message for start date and Flex Message buttons (保存する / やり直す / キャンセル) for final confirmation before saving to DB
 - **LINE OAuth Login** — One-tap sign-in with your LINE account, no password required
@@ -69,8 +71,10 @@ Plan trips together, share itineraries via LINE, and let AI organize your schedu
 | | |
 |---|---|
 | Parser / Planner | Google Gemini 2.5 Flash (`@google/generative-ai`); auto-retry on 503 + fallback to Gemini 2.0 Flash |
+| Travel Agent | `lib/agents/travel/` — geocode (Nominatim) → place providers (Overpass / OpenStreetMap) → ranking engine → enriched Gemini planner; never throws, degrades to plain plan |
+| Place Data | OpenStreetMap via Overpass API (tourism spots + restaurants); free, no API key |
 | LINE Bot NLU | Regex intent parser → Gemini fallback |
-| Suggest Session | Step-by-step state machine stored in `pending_actions` (15-min TTL) |
+| Suggest Session | Step-by-step state machine stored in `suggest_sessions` (15-min TTL) |
 | Pending Actions | Confirmation flow with 10-min expiry |
 
 ### Deployment
@@ -91,6 +95,8 @@ graph TD
     Auth["🔐 NextAuth.js\nLINE OAuth"]
     Supabase[("🗄️ Supabase\nPostgreSQL + Storage")]
     Gemini["🤖 Gemini 2.5 Flash"]
+    Agent["🧭 Travel Agent"]
+    OSM["🗺️ OpenStreetMap\nOverpass + Nominatim"]
     LineBot["📡 LINE Messaging API"]
     Cron["⏰ Vercel Cron"]
 
@@ -98,7 +104,10 @@ graph TD
     User -->|"LINE OAuth"| Auth
     Auth -->|"JWT session"| Next
     Next -->|"CRUD trips/days/events"| Supabase
-    Next -->|"AI parse / plan"| Gemini
+    Next -->|"AI parse"| Gemini
+    Next -->|"AI plan"| Agent
+    Agent -->|"geocode + places"| OSM
+    Agent -->|"enriched prompt"| Gemini
     LINE -->|"Webhook (HMAC verified)"| Next
     Next -->|"Reply messages"| LineBot
     LineBot -->|"Deliver to group"| LINE
@@ -117,7 +126,9 @@ events             — Events per day (time, type, note, alert_min)
 tickets            — File attachments per event
 trip_members       — User ↔ Trip association (owner / member, max 20)
 invite_tokens      — Shareable invite links (7-day expiry, multi-use)
-pending_actions    — LINE bot confirmations (10-min) + AI suggest sessions (15-min)
+pending_actions    — LINE bot confirmations (10-min expiry)
+suggest_sessions   — LINE bot AI suggest session state (15-min TTL)
+travel_preferences — Saved user travel preferences (destination, tags, budget) for personalization
 user_profiles      — Cached LINE display name & avatar
 audit_logs         — Full change history (INSERT/UPDATE/DELETE) for all tables
 ```
@@ -144,7 +155,8 @@ audit_logs         — Full change history (INSERT/UPDATE/DELETE) for all tables
 | GET | `/api/tickets/[id]/url` | Get signed download URL |
 | POST | `/api/line/webhook` | LINE bot webhook (message + postback events) |
 | POST | `/api/parse` | AI text → itinerary JSON |
-| POST | `/api/suggest` | AI suggestion form → itinerary JSON |
+| POST | `/api/suggest` | AI suggestion form → Travel Agent → itinerary + spots/restaurants JSON |
+| GET | `/api/travel/recommend` | Travel Agent recommendations (spots + restaurants) for a destination |
 | GET/POST | `/api/notify` | Cron-triggered push alerts |
 | GET | `/api/admin/audit` | Audit log list for a trip (owner only) |
 | POST | `/api/admin/audit/[id]/restore` | Restore a deleted / updated record |
@@ -324,6 +336,25 @@ create table pending_actions (
   created_at timestamptz not null default now()
 );
 
+create table suggest_sessions (
+  group_id   text        not null,
+  user_id    text        not null,
+  session_json jsonb     not null,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  primary key (group_id, user_id)
+);
+
+create table travel_preferences (
+  id          uuid        primary key default gen_random_uuid(),
+  user_id     text        not null,
+  destination text        not null,
+  tags        text[]      not null default '{}',
+  budget      text        not null default 'moderate',
+  created_at  timestamptz not null default now()
+);
+create index on travel_preferences (user_id);
+
 create table user_profiles (
   id text primary key,
   name text,
@@ -401,7 +432,8 @@ tabitomo/
 │   │   ├── line/webhook/         # LINE bot webhook (message + postback events)
 │   │   ├── notify/               # Cron push notifications
 │   │   ├── parse/                # AI itinerary parser
-│   │   └── suggest/              # AI itinerary suggestion
+│   │   ├── suggest/              # AI itinerary suggestion (via Travel Agent)
+│   │   └── travel/recommend/     # Travel Agent recommendations (spots + restaurants)
 │   ├── components/
 │   │   └── TechBackground.tsx    # Canvas animation (aurora, particles, meteor, parallax)
 │   ├── trips/[id]/               # Trip detail page
@@ -419,6 +451,14 @@ tabitomo/
 │   └── logo/TabitomoLogo.tsx     # Animated SVG bird mascot
 ├── lib/
 │   ├── ai/gemini.ts              # Gemini 2.5 Flash client (LINE bot NLU)
+│   ├── agents/travel/            # Travel Agent
+│   │   ├── agent.ts              # runTravelAgent() orchestrator (geocode → fetch → rank → plan)
+│   │   ├── geo.ts                # Haversine distance helper
+│   │   ├── ranking.ts            # Candidate scoring (rating / distance / budget / preference)
+│   │   ├── planner.ts            # Enriched Gemini planner (retry + fallback)
+│   │   ├── providers/            # Place providers (Overpass spots / restaurants; hotel + transport stubs)
+│   │   ├── memory/preferences.ts # travel_preferences load / save
+│   │   └── prompts/suggest.ts    # System prompt + candidate block builder
 │   ├── line/
 │   │   ├── reply.ts              # LINE reply / push message helpers
 │   │   └── suggest.ts            # LINE bot AI suggest session state machine
