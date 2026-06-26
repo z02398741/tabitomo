@@ -1,4 +1,4 @@
-import type { TravelAgentInput, TravelRecommendation, LatLng } from './types'
+import type { TravelAgentInput, TravelRecommendation, LatLng, PlaceCandidate } from './types'
 import { fetchSpots } from './providers/spots'
 import { fetchRestaurants } from './providers/restaurants'
 import { getPreferences } from './memory/preferences'
@@ -27,8 +27,8 @@ export async function runTravelAgent(input: TravelAgentInput): Promise<TravelRec
       ? { lat: input.lat, lng: input.lng }
       : await resolveCoords(input.destination)
 
-  let rawSpots = []
-  let rawRestaurants = []
+  let rawSpots: PlaceCandidate[] = []
+  let rawRestaurants: PlaceCandidate[] = []
 
   if (coords) {
     const [spotsResult, restaurantsResult] = await Promise.allSettled([
