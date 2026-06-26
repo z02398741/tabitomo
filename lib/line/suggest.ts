@@ -5,7 +5,18 @@
 import { createClient } from '@supabase/supabase-js'
 import { replyMessage, pushMessage, textMsg } from '@/lib/line/reply'
 import { runTravelAgent } from '@/lib/agents/travel/agent'
+import { savePreference } from '@/lib/agents/travel/memory/preferences'
 import type { BudgetLevel } from '@/lib/agents/travel/types'
+
+// Record a preference signal when a LINE-suggested trip is saved.
+async function recordSuggestPreference(session: SuggestSession, userId: string) {
+  if (!userId || !session.destination) return
+  const validBudgets: BudgetLevel[] = ['budget', 'moderate', 'luxury']
+  const budget: BudgetLevel = validBudgets.includes(session.budget as BudgetLevel)
+    ? (session.budget as BudgetLevel)
+    : 'moderate'
+  await savePreference({ userId, destination: session.destination, tags: [], budget }).catch(() => {})
+}
 
 function getAdmin() {
   return createClient(
@@ -350,6 +361,7 @@ export async function handleSuggestFlow(
       await replyMessage(replyToken, [textMsg('💾 保存中...')])
       try {
         const tripId = await saveTrip(session.generatedTrip, userId)
+        await recordSuggestPreference(session, userId)
         await clearSuggestSession(groupId, userId)
         await pushMessage(pushTo, [textMsg(
           `✅ 保存しました！\n📍 ${session.generatedTrip?.title}\n\nApp で確認・修正できます：\nhttps://tabitomo-gilt.vercel.app/trips/${tripId}`
@@ -600,6 +612,7 @@ export async function handleSuggestConfirm(
     await replyMessage(replyToken, [textMsg('💾 保存中...')])
     try {
       const tripId = await saveTrip(session.generatedTrip, userId)
+      await recordSuggestPreference(session, userId)
       await clearSuggestSession(groupId, userId)
       await pushMessage(pushTo, [textMsg(
         `✅ 保存しました！\n📍 ${session.generatedTrip?.title}\n\nApp で確認・修正できます：\nhttps://tabitomo-gilt.vercel.app/trips/${tripId}`

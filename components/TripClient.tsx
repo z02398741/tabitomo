@@ -527,9 +527,13 @@ function ExportModal({ trip, onClose }: { trip: Trip; onClose: () => void }) {
 }
 
 // ── Quick Add Spot Modal ───────────────────────────────────────
-function QuickAddSpotModal({ spot, days, onSave, onClose }: {
+// OSM tag keys worth remembering as a preference signal
+const PREF_TAG_KEYS = ['tourism', 'historic', 'natural', 'leisure', 'amenity', 'cuisine']
+
+function QuickAddSpotModal({ spot, days, destination, onSave, onClose }: {
   spot: RankedCandidate
   days: TripDay[]
+  destination?: string | null
   onSave: (dayId: string, ev: Event) => void
   onClose: () => void
 }) {
@@ -551,6 +555,16 @@ function QuickAddSpotModal({ spot, days, onSave, onClose }: {
         cost: null,
         alert_min: 30,
       })
+      // Record a preference signal — adding a spot means the user likes
+      // this kind of place. Fire-and-forget; never block the add.
+      if (destination) {
+        const tags = (spot.tags ?? []).filter(t => PREF_TAG_KEYS.includes(t.split('=')[0]))
+        fetch('/api/travel/preference', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ destination, tags }),
+        }).catch(() => {})
+      }
       onSave(dayId, saved)
       onClose()
     } finally {
@@ -1473,6 +1487,7 @@ export default function TripClient({ trip: initialTrip, session }: {
         <QuickAddSpotModal
           spot={quickAddSpot}
           days={trip.days ?? []}
+          destination={trip.destination}
           onSave={(dayId, ev) => handleAddEvent(dayId, ev)}
           onClose={() => setQuickAddSpot(null)}
         />
