@@ -16,7 +16,7 @@ Plan trips together, share itineraries via LINE, and let AI organize your schedu
 
 - **AI Itinerary Suggestion (Web)** — Fill a guided form (destination, days, start date, members, budget, travel style, free notes); the Travel Agent fetches real places and Gemini 2.5 Flash generates a full day-by-day itinerary shown as a preview before saving
 - **Travel Agent (Real Place Enrichment)** — Before planning, the agent geocodes the destination (Nominatim) and pulls real tourism spots and restaurants from OpenStreetMap (Overpass API), ranks them by rating / distance / budget / personal preference, and feeds the top candidates into the planner so itineraries use actual named venues. Degrades gracefully to a plain plan if any provider is unavailable
-- **Recommended Spots Panel** — Trip detail page shows an おすすめスポット panel (spots + restaurants with distance badges); one tap adds any spot to a chosen trip day
+- **Recommended Spots Panel** — Trip detail page shows an おすすめスポット panel with an interactive OpenStreetMap (Leaflet) plotting spots + restaurants, plus cards with distance badges; one tap adds any spot to a chosen trip day
 - **AI Itinerary Import** — Paste raw travel text; Gemini parses it into a structured plan shown as a preview before saving
 - **LINE Bot AI Suggestion** — Trigger step-by-step guided trip planning directly in a LINE chat; uses datetimepicker Flex Message for start date and Flex Message buttons (保存する / やり直す / キャンセル) for final confirmation before saving to DB
 - **LINE OAuth Login** — One-tap sign-in with your LINE account, no password required
@@ -45,6 +45,7 @@ Plan trips together, share itineraries via LINE, and let AI organize your schedu
 | Language | TypeScript 5 (strict mode) |
 | Styling | Tailwind CSS v4 |
 | Runtime | React 19 |
+| Maps | Leaflet + OpenStreetMap tiles (recommended-spots map) |
 
 ### Backend
 | | |
