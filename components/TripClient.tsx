@@ -452,10 +452,68 @@ function DayEditModal({ day, onSave, onClose }: {
   )
 }
 
+// ── iCalendar (.ics) export ────────────────────────────────────
+function icsEscape(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n')
+}
+
+// Build an iCalendar string from the trip, or null if no dated events.
+// Times are floating local time (interpreted in the user's calendar tz).
+function tripToIcs(trip: Trip): string | null {
+  const dtstamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+  const lines: string[] = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Tabitomo//Trip//JA',
+    'CALSCALE:GREGORIAN',
+  ]
+  let count = 0
+  trip.days?.forEach(d => {
+    if (!d.date) return
+    const ymd = d.date.replace(/-/g, '')
+    d.events?.forEach(e => {
+      const start = `${ymd}T${(e.time || '09:00').replace(':', '')}00`
+      lines.push('BEGIN:VEVENT')
+      lines.push(`UID:${e.id}@tabitomo`)
+      lines.push(`DTSTAMP:${dtstamp}`)
+      lines.push(`DTSTART:${start}`)
+      lines.push('DURATION:PT1H')
+      lines.push(`SUMMARY:${icsEscape(e.title)}`)
+      if (e.location) lines.push(`LOCATION:${icsEscape(e.location)}`)
+      if (e.note)     lines.push(`DESCRIPTION:${icsEscape(e.note)}`)
+      if (e.alert_min > 0) {
+        lines.push('BEGIN:VALARM', 'ACTION:DISPLAY',
+          `DESCRIPTION:${icsEscape(e.title)}`,
+          `TRIGGER:-PT${e.alert_min}M`, 'END:VALARM')
+      }
+      lines.push('END:VEVENT')
+      count++
+    })
+  })
+  if (count === 0) return null
+  lines.push('END:VCALENDAR')
+  return lines.join('\r\n')
+}
+
 // ── Export Modal ───────────────────────────────────────────────
 function ExportModal({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const [mode,   setMode]   = useState<'text'|'line'>('text')
   const [copied, setCopied] = useState(false)
+
+  const downloadIcs = () => {
+    const ics = tripToIcs(trip)
+    if (!ics) return
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${(trip.title || 'trip').replace(/[\\/:*?"<>|]+/g, '_')}.ics`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+  const icsAvailable = (trip.days ?? []).some(d => d.date && (d.events?.length ?? 0) > 0)
 
   const toText = () => {
     const lines = [`【${trip.title}】`]
@@ -516,6 +574,15 @@ function ExportModal({ trip, onClose }: { trip: Trip; onClose: () => void }) {
         <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:'10px',
           border:`1px solid ${T.border}`, background:'none', cursor:'pointer',
           fontSize:'13px', color:T.textSec }}>閉じる</button>
+        <button onClick={downloadIcs} disabled={!icsAvailable}
+          title={icsAvailable ? '' : '日付が設定された予定がありません'}
+          style={{ padding:'9px 16px', borderRadius:'10px',
+            border:`1px solid ${T.teal}55`, background: icsAvailable ? T.teal+'22' : 'none',
+            color: icsAvailable ? T.teal : T.textDim,
+            cursor: icsAvailable ? 'pointer' : 'default', fontSize:'13px', fontWeight:600,
+            display:'flex', alignItems:'center', gap:'6px' }}>
+          {Ico.cal} .ics
+        </button>
         <button onClick={copy} style={{ padding:'9px 20px', borderRadius:'10px',
           border:'none', background: copied ? '#4caf8f' : T.accent,
           color:'#fff', cursor:'pointer', fontSize:'13px', fontWeight:600,

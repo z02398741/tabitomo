@@ -28,7 +28,7 @@ Plan trips together, share itineraries via LINE, and let AI organize your schedu
 - **Trip Duplication** — Duplicate any trip with one-click confirmation
 - **Trip Info Editing** — Edit member count, budget, and transport mode directly from the web UI
 - **Drag-and-Drop Reorder** — Reorder trip days with drag handles
-- **Export** — Copy full itinerary as plain text or LINE-formatted message
+- **Export** — Copy full itinerary as plain text or LINE-formatted message, or download as an iCalendar (.ics) file with per-event reminders for Google/Apple Calendar
 - **Audit Log & Restore** — Every INSERT/UPDATE/DELETE is logged via PostgreSQL triggers; deleted events, days, members, and trips can be restored via API
 - **Animated Background** — Canvas-based aurora, particles, shooting stars, and airplane trails
 - **Responsive** — Mobile-first layout with auto-degraded animation on small screens
