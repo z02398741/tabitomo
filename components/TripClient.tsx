@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import TabitomoLogo from '@/components/logo/TabitomoLogo'
+import SpotsMap from '@/components/SpotsMap'
 // write operations go through API routes (lib/trips uses server-only env vars)
 async function apiAddEvent(body: object) {
   const res = await fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -1348,6 +1349,10 @@ export default function TripClient({ trip: initialTrip, session }: {
                 </span>
               )}
             </div>
+
+            {(recSpots.length > 0 || recRestaurants.length > 0) && (
+              <SpotsMap spots={recSpots} restaurants={recRestaurants} />
+            )}
 
             {recSpots.length > 0 && (
               <>
