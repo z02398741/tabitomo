@@ -4,9 +4,9 @@ import { NextResponse } from 'next/server'
 import { getRankedCandidates } from '@/lib/agents/travel/agent'
 import type { BudgetLevel } from '@/lib/agents/travel/types'
 
-// Spot lookup hits Nominatim + Overpass; cap function runtime so it
-// fails fast instead of hanging the panel.
-export const maxDuration = 30
+// Spot lookup hits Nominatim + Overpass (with a Japan-biased retry);
+// give the function headroom but still bound it.
+export const maxDuration = 45
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
