@@ -5,7 +5,7 @@ const RADIUS_M = 15_000
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
 
 export async function fetchRestaurants(center: LatLng): Promise<PlaceCandidate[]> {
-  const query = `[out:json][timeout:25];
+  const query = `[out:json][timeout:18];
 (
   nwr["amenity"~"^(restaurant|cafe|food_court|fast_food|bar|pub|izakaya_pub)$"](around:${RADIUS_M},${center.lat},${center.lng});
 );
@@ -16,7 +16,7 @@ out body center;`
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: `data=${encodeURIComponent(query)}`,
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(18_000),
     })
     if (!res.ok) {
       console.warn('[travel] fetchRestaurants overpass status', res.status)

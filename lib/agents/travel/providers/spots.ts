@@ -8,7 +8,7 @@ export async function fetchSpots(center: LatLng): Promise<PlaceCandidate[]> {
   // Broad coverage: any tourism POI, plus historic sites, notable nature
   // (peaks/beaches/volcanoes/hot springs), and parks/gardens. Keeps
   // results meaningful even on sparsely-mapped rural areas / islands.
-  const query = `[out:json][timeout:25];
+  const query = `[out:json][timeout:18];
 (
   nwr["tourism"](around:${RADIUS_M},${center.lat},${center.lng});
   nwr["historic"](around:${RADIUS_M},${center.lat},${center.lng});
@@ -22,7 +22,7 @@ out body center;`
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: `data=${encodeURIComponent(query)}`,
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(18_000),
     })
     if (!res.ok) {
       console.warn('[travel] fetchSpots overpass status', res.status)
