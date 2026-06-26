@@ -3,8 +3,8 @@
 // User-Agent / Accept). Never throws — returns [] on total failure.
 const ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
 ]
 
 export async function runOverpass(query: string): Promise<any[]> {
@@ -18,7 +18,7 @@ export async function runOverpass(query: string): Promise<any[]> {
           'User-Agent': 'Tabitomo/1.0 (group travel planner)',
         },
         body: `data=${encodeURIComponent(query)}`,
-        signal: AbortSignal.timeout(18_000),
+        signal: AbortSignal.timeout(12_000),
       })
       if (!res.ok) {
         console.warn('[travel] overpass status', res.status, 'at', url)

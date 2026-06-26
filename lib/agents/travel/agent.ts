@@ -1,6 +1,5 @@
 import type { TravelAgentInput, TravelRecommendation, LatLng, PlaceCandidate, RankedCandidate } from './types'
-import { fetchSpots } from './providers/spots'
-import { fetchRestaurants } from './providers/restaurants'
+import { fetchPlaces } from './providers/places'
 import { getPreferences } from './memory/preferences'
 import { rank } from './ranking'
 import { buildItinerary } from './planner'
@@ -31,13 +30,10 @@ async function resolveCoords(destination: string, japanOnly = false): Promise<La
 }
 
 async function fetchAround(coords: LatLng): Promise<{ spots: PlaceCandidate[]; restaurants: PlaceCandidate[] }> {
-  const [spotsResult, restaurantsResult] = await Promise.allSettled([
-    fetchSpots(coords),
-    fetchRestaurants(coords),
-  ])
-  return {
-    spots: spotsResult.status === 'fulfilled' ? spotsResult.value : [],
-    restaurants: restaurantsResult.status === 'fulfilled' ? restaurantsResult.value : [],
+  try {
+    return await fetchPlaces(coords)
+  } catch {
+    return { spots: [], restaurants: [] }
   }
 }
 
