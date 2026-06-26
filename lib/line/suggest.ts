@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 import { replyMessage, pushMessage, textMsg } from '@/lib/line/reply'
 import { runTravelAgent } from '@/lib/agents/travel/agent'
 import { savePreference } from '@/lib/agents/travel/memory/preferences'
-import type { BudgetLevel } from '@/lib/agents/travel/types'
+import type { BudgetLevel, RankedCandidate } from '@/lib/agents/travel/types'
 
 // Record a preference signal when a LINE-suggested trip is saved.
 async function recordSuggestPreference(session: SuggestSession, userId: string) {
@@ -79,7 +79,7 @@ export async function clearSuggestSession(groupId: string, userId: string) {
 }
 
 // ── Travel Agent generation ────────────────────────────────────
-export async function generateTrip(session: SuggestSession): Promise<any> {
+export async function generateTrip(session: SuggestSession): Promise<{ trip: any; spots: RankedCandidate[]; restaurants: RankedCandidate[] }> {
   const validBudgets: BudgetLevel[] = ['budget', 'moderate', 'luxury']
   const budget: BudgetLevel = validBudgets.includes(session.budget as BudgetLevel)
     ? (session.budget as BudgetLevel)
@@ -93,7 +93,7 @@ export async function generateTrip(session: SuggestSession): Promise<any> {
     budget,
     note: session.freeNote?.trim() || undefined,
   })
-  return rec.itinerary
+  return { trip: rec.itinerary, spots: rec.spots, restaurants: rec.restaurants }
 }
 
 // ── Preview formatting ─────────────────────────────────────────
@@ -341,6 +341,63 @@ export function makeConfirmFlex(): object {
   }
 }
 
+// ── Recommended spots carousel ─────────────────────────────────
+const CATEGORY_LABEL: Record<string, string> = {
+  restaurant: '🍽 レストラン', cafe: '☕ カフェ', food_court: '🍜 フードコート',
+  fast_food: '🍔 ファストフード', bar: '🍶 バー', pub: '🍺 パブ', izakaya_pub: '🍶 居酒屋',
+  museum: '🏛 美術館', castle: '🏯 城', shrine: '⛩ 神社', temple: '🛕 寺院',
+  attraction: '📸 観光', park: '🌳 公園', garden: '🌸 庭園', peak: '⛰ 山',
+  beach: '🏖 ビーチ', volcano: '🌋 火山', hot_spring: '♨️ 温泉', viewpoint: '🔭 展望',
+}
+
+function recBubble(c: RankedCandidate): object {
+  const label = CATEGORY_LABEL[c.category] ?? `📍 ${c.category}`
+  const mapQuery = encodeURIComponent(c.name)
+  return {
+    type: 'bubble',
+    size: 'micro',
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'xs',
+      contents: [
+        { type: 'text', text: c.name, weight: 'bold', size: 'sm', wrap: true, maxLines: 2 },
+        { type: 'text', text: label, size: 'xxs', color: '#8b93b0', wrap: true },
+        { type: 'text', text: `📏 ${c.distanceKm.toFixed(1)}km`, size: 'xxs', color: '#aaaaaa' },
+      ],
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      contents: [
+        {
+          type: 'button',
+          style: 'link',
+          height: 'sm',
+          action: { type: 'uri', label: '🗺 地図', uri: `https://www.google.com/maps/search/?api=1&query=${mapQuery}` },
+        },
+      ],
+    },
+  }
+}
+
+/**
+ * Build a Flex carousel of recommended spots + restaurants, or null if
+ * there are none. Capped at 10 bubbles (LINE carousel limit is 12).
+ */
+export function makeRecommendCarousel(spots: RankedCandidate[], restaurants: RankedCandidate[]): object | null {
+  const picks = [...spots.slice(0, 6), ...restaurants.slice(0, 4)]
+  if (picks.length === 0) return null
+  return {
+    type: 'flex',
+    altText: '📍 周辺のおすすめスポット',
+    contents: {
+      type: 'carousel',
+      contents: picks.map(recBubble),
+    },
+  }
+}
+
 // ── Main entry point ──────────────────────────────────────────
 /**
  * Check if there is an active suggest session for this user and handle it.
@@ -536,11 +593,13 @@ export async function processStep(
 
     // Generate async, then push preview
     try {
-      const trip = await generateTrip(next)
+      const { trip, spots, restaurants } = await generateTrip(next)
       const withTrip = { ...next, generatedTrip: trip, step: 'preview' as SuggestStep }
       await saveSuggestSession(groupId, userId, withTrip)
       const previewMsgs = formatPreviewMessages(trip)
       await pushMessage(pushTo, previewMsgs)
+      const recCarousel = makeRecommendCarousel(spots, restaurants)
+      if (recCarousel) await pushMessage(pushTo, [recCarousel])
     } catch (e: any) {
       console.error('[suggest] generation error:', e)
       await clearSuggestSession(groupId, userId)
