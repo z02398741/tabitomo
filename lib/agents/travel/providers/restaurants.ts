@@ -7,8 +7,7 @@ const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
 export async function fetchRestaurants(center: LatLng): Promise<PlaceCandidate[]> {
   const query = `[out:json][timeout:25];
 (
-  node["amenity"~"^(restaurant|cafe|food_court|izakaya_pub)$"](around:${RADIUS_M},${center.lat},${center.lng});
-  way["amenity"~"^(restaurant|cafe|food_court|izakaya_pub)$"](around:${RADIUS_M},${center.lat},${center.lng});
+  nwr["amenity"~"^(restaurant|cafe|food_court|fast_food|bar|pub|izakaya_pub)$"](around:${RADIUS_M},${center.lat},${center.lng});
 );
 out body center;`
 
@@ -19,13 +18,17 @@ out body center;`
       body: `data=${encodeURIComponent(query)}`,
       signal: AbortSignal.timeout(30_000),
     })
-    if (!res.ok) return []
+    if (!res.ok) {
+      console.warn('[travel] fetchRestaurants overpass status', res.status)
+      return []
+    }
     const json = await res.json()
-    return (json.elements ?? []).flatMap((el: any): PlaceCandidate[] => {
-      const name: string = el.tags?.['name:ja'] || el.tags?.name
+    const raw = json.elements ?? []
+    const out = raw.flatMap((el: any): PlaceCandidate[] => {
+      const name: string = el.tags?.['name:ja'] || el.tags?.name || el.tags?.['name:en']
       if (!name) return []
-      const lat: number = el.type === 'way' ? el.center?.lat : el.lat
-      const lng: number = el.type === 'way' ? el.center?.lon : el.lon
+      const lat: number = el.type === 'node' ? el.lat : el.center?.lat
+      const lng: number = el.type === 'node' ? el.lon : el.center?.lon
       if (!lat || !lng) return []
       const tags: string[] = Object.entries(el.tags ?? {}).map(([k, v]) => `${k}=${v}`)
       const rawRating = parseFloat(el.tags?.stars ?? el.tags?.rating ?? '')
@@ -39,7 +42,10 @@ out body center;`
         distanceKm: haversine(center.lat, center.lng, lat, lng),
       }]
     })
-  } catch {
+    console.log(`[travel] fetchRestaurants: ${raw.length} raw, ${out.length} named`)
+    return out
+  } catch (e: any) {
+    console.warn('[travel] fetchRestaurants error:', e?.message)
     return []
   }
 }
