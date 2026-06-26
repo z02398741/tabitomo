@@ -1,8 +1,12 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { NextResponse } from 'next/server'
-import { runTravelAgent } from '@/lib/agents/travel/agent'
+import { getRankedCandidates } from '@/lib/agents/travel/agent'
 import type { BudgetLevel } from '@/lib/agents/travel/types'
+
+// Spot lookup hits Nominatim + Overpass; cap function runtime so it
+// fails fast instead of hanging the panel.
+export const maxDuration = 30
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
@@ -26,7 +30,7 @@ export async function GET(req: Request) {
   const resolvedBudget: BudgetLevel = validBudgets.includes(budget) ? budget : 'moderate'
 
   try {
-    const rec = await runTravelAgent({
+    const { spots, restaurants } = await getRankedCandidates({
       destination,
       durationDays,
       budget: resolvedBudget,
@@ -35,7 +39,7 @@ export async function GET(req: Request) {
       lat: latParam ? parseFloat(latParam) : undefined,
       lng: lngParam ? parseFloat(lngParam) : undefined,
     })
-    return NextResponse.json(rec)
+    return NextResponse.json({ spots, restaurants })
   } catch (e: any) {
     console.error('[travel/recommend] error:', e)
     return NextResponse.json({ error: e.message || 'failed' }, { status: 500 })
