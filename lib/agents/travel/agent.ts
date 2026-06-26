@@ -1,6 +1,7 @@
 import type { TravelAgentInput, TravelRecommendation, LatLng, PlaceCandidate, RankedCandidate } from './types'
 import { fetchPlaces } from './providers/places'
 import { getPreferences } from './memory/preferences'
+import { getCachedPlaces, setCachedPlaces, placeCacheKey } from './memory/placeCache'
 import { rank } from './ranking'
 import { buildItinerary } from './planner'
 
@@ -42,41 +43,54 @@ async function fetchAround(coords: LatLng): Promise<{ spots: PlaceCandidate[]; r
  * calling Gemini. Used by the recommendations panel, which only needs
  * the place lists and must return fast.
  */
-export async function getRankedCandidates(
-  input: TravelAgentInput,
-): Promise<{ spots: RankedCandidate[]; restaurants: RankedCandidate[] }> {
+// Geocode + Overpass fetch (the network-expensive part), with the
+// Japan-biased retry for ambiguous names. No caching, no ranking.
+async function fetchRawCandidates(input: TravelAgentInput): Promise<{ spots: PlaceCandidate[]; restaurants: PlaceCandidate[] }> {
   const fromInput = input.lat != null && input.lng != null
   let coords: LatLng | null = fromInput
     ? { lat: input.lat!, lng: input.lng! }
     : await resolveCoords(input.destination)
 
-  let rawSpots: PlaceCandidate[] = []
-  let rawRestaurants: PlaceCandidate[] = []
-
-  if (coords) {
-    const r = await fetchAround(coords)
-    rawSpots = r.spots
-    rawRestaurants = r.restaurants
-  }
+  let raw: { spots: PlaceCandidate[]; restaurants: PlaceCandidate[] } = { spots: [], restaurants: [] }
+  if (coords) raw = await fetchAround(coords)
 
   // Geocoding fallback: when a name resolved to a place with no nearby
   // POIs (ambiguous name like "大島" landing on the wrong/ocean spot),
   // retry constrained to Japan and re-fetch.
-  if (!fromInput && rawSpots.length === 0 && rawRestaurants.length === 0) {
+  if (!fromInput && raw.spots.length === 0 && raw.restaurants.length === 0) {
     const jpCoords = await resolveCoords(input.destination, true)
     if (jpCoords && (jpCoords.lat !== coords?.lat || jpCoords.lng !== coords?.lng)) {
-      coords = jpCoords
-      const r = await fetchAround(jpCoords)
-      rawSpots = r.spots
-      rawRestaurants = r.restaurants
+      raw = await fetchAround(jpCoords)
+    }
+  }
+  return raw
+}
+
+export async function getRankedCandidates(
+  input: TravelAgentInput,
+): Promise<{ spots: RankedCandidate[]; restaurants: RankedCandidate[] }> {
+  // Cache the raw candidates per destination (skip cache when explicit
+  // coords are passed). Ranking still runs per-request so personalization
+  // stays fresh.
+  const cacheKey = input.lat == null ? placeCacheKey(input.destination) : null
+
+  let raw: { spots: PlaceCandidate[]; restaurants: PlaceCandidate[] } | null = null
+  if (cacheKey) raw = await getCachedPlaces(cacheKey).catch(() => null)
+
+  if (raw) {
+    console.log(`[travel] place cache hit for "${cacheKey}"`)
+  } else {
+    raw = await fetchRawCandidates(input)
+    if (cacheKey && (raw.spots.length > 0 || raw.restaurants.length > 0)) {
+      await setCachedPlaces(cacheKey, raw).catch(() => {})
     }
   }
 
   const prefs = input.userId ? await getPreferences(input.userId).catch(() => []) : []
 
   return {
-    spots: rank(rawSpots, input, prefs, 10),
-    restaurants: rank(rawRestaurants, input, prefs, 10),
+    spots: rank(raw.spots, input, prefs, 10),
+    restaurants: rank(raw.restaurants, input, prefs, 10),
   }
 }
 

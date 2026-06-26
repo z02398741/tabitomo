@@ -129,6 +129,7 @@ invite_tokens      — Shareable invite links (7-day expiry, multi-use)
 pending_actions    — LINE bot confirmations (10-min expiry)
 suggest_sessions   — LINE bot AI suggest session state (15-min TTL)
 travel_preferences — Saved user travel preferences (destination, tags, budget) for personalization
+place_cache        — Cached Overpass/OSM place candidates per destination (7-day TTL)
 user_profiles      — Cached LINE display name & avatar
 audit_logs         — Full change history (INSERT/UPDATE/DELETE) for all tables
 ```
@@ -354,6 +355,13 @@ create table travel_preferences (
   created_at  timestamptz not null default now()
 );
 create index on travel_preferences (user_id);
+
+create table place_cache (
+  destination text        primary key,
+  data        jsonb       not null,
+  expires_at  timestamptz not null,
+  created_at  timestamptz not null default now()
+);
 
 create table user_profiles (
   id text primary key,
