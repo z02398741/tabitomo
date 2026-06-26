@@ -42,6 +42,7 @@ async function apiDeleteTicket(id: string) {
 }
 import type { Trip, TripDay, Event } from '@/types'
 import type { DayWeather } from '@/lib/weather'
+import type { RankedCandidate } from '@/lib/agents/travel/types'
 
 const T = {
   bg:       '#0d0f14',
@@ -525,6 +526,79 @@ function ExportModal({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   )
 }
 
+// ── Quick Add Spot Modal ───────────────────────────────────────
+function QuickAddSpotModal({ spot, days, onSave, onClose }: {
+  spot: RankedCandidate
+  days: TripDay[]
+  onSave: (dayId: string, ev: Event) => void
+  onClose: () => void
+}) {
+  const [dayId, setDayId] = useState(days[0]?.id ?? '')
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    if (!dayId) return
+    setSaving(true)
+    try {
+      const mealTypes = ['restaurant', 'cafe', 'food_court', 'izakaya_pub']
+      const saved = await apiAddEvent({
+        day_id: dayId,
+        time: '10:00',
+        title: spot.name,
+        type: mealTypes.includes(spot.category) ? 'meal' : 'activity',
+        note: `${spot.category} · ${spot.distanceKm.toFixed(1)}km`,
+        location: spot.name,
+        cost: null,
+        alert_min: 30,
+      })
+      onSave(dayId, saved)
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ display:'flex', justifyContent:'space-between',
+        alignItems:'center', marginBottom:'16px' }}>
+        <span style={{ fontSize:'15px', fontWeight:700, color:T.textPri }}>
+          行程に追加
+        </span>
+        <button onClick={onClose} style={{ background:'none', border:'none',
+          color:T.textDim, cursor:'pointer', fontSize:'20px' }}>×</button>
+      </div>
+      <div style={{ padding:'10px 12px', borderRadius:'10px',
+        background:'#13161e', border:`1px solid ${T.border}`,
+        marginBottom:'16px' }}>
+        <div style={{ fontSize:'14px', fontWeight:600, color:T.textPri }}>{spot.name}</div>
+        <div style={{ fontSize:'11px', color:T.textSec, marginTop:'3px' }}>
+          {spot.category} · {spot.distanceKm.toFixed(1)}km
+        </div>
+      </div>
+      <div style={{ marginBottom:'16px' }}>
+        <label style={{ display:'block', fontSize:'11px', fontWeight:700,
+          color:T.textDim, letterSpacing:'.06em', marginBottom:'6px' }}>追加する日</label>
+        <select value={dayId} onChange={e => setDayId(e.target.value)} style={inputSt}>
+          {days.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+        </select>
+      </div>
+      <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end' }}>
+        <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:'10px',
+          border:`1px solid ${T.border}`, background:'none', cursor:'pointer',
+          fontSize:'13px', color:T.textSec }}>キャンセル</button>
+        <button onClick={save} disabled={!dayId || saving} style={{
+          padding:'9px 20px', borderRadius:'10px', border:'none',
+          background: dayId && !saving ? T.accent : T.textDim+'44',
+          color:'#fff', cursor: dayId && !saving ? 'pointer' : 'default',
+          fontSize:'13px', fontWeight:600 }}>
+          {saving ? '追加中...' : '追加'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Event Row ──────────────────────────────────────────────────
 function EventRow({ ev, accent, isLast, onEdit, onDelete }: {
   ev: Event
@@ -974,6 +1048,10 @@ export default function TripClient({ trip: initialTrip, session }: {
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
   const [weatherDays, setWeatherDays] = useState<Record<string, DayWeather>>({})
   const [weatherLoc,  setWeatherLoc]  = useState<string | null>(null)
+  const [recSpots,      setRecSpots]      = useState<RankedCandidate[]>([])
+  const [recRestaurants, setRecRestaurants] = useState<RankedCandidate[]>([])
+  const [recLoading,    setRecLoading]    = useState(false)
+  const [quickAddSpot,  setQuickAddSpot]  = useState<RankedCandidate | null>(null)
 
   useEffect(() => {
     const dest = trip.destination
@@ -987,6 +1065,25 @@ export default function TripClient({ trip: initialTrip, session }: {
         setWeatherLoc(data.location?.name ?? null)
       })
       .catch(() => {})
+    return () => { cancelled = true }
+  }, [trip.destination])
+
+  useEffect(() => {
+    const dest = trip.destination
+    if (!dest) return
+    let cancelled = false
+    setRecLoading(true)
+    const days = (trip.days ?? []).length || 3
+    const params = new URLSearchParams({ destination: dest, days: String(days) })
+    fetch(`/api/travel/recommend?${params}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (cancelled || !data) return
+        setRecSpots(data.spots ?? [])
+        setRecRestaurants(data.restaurants ?? [])
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setRecLoading(false) })
     return () => { cancelled = true }
   }, [trip.destination])
 
@@ -1223,6 +1320,82 @@ export default function TripClient({ trip: initialTrip, session }: {
           }}>
           {Ico.cal} 日程を追加
         </button>
+
+        {/* Recommended Spots Panel */}
+        {trip.destination && (recLoading || recSpots.length > 0 || recRestaurants.length > 0) && (
+          <div style={{ marginTop:'24px' }}>
+            <div style={{ fontSize:'13px', fontWeight:700, color:T.textSec,
+              letterSpacing:'.06em', marginBottom:'12px', display:'flex',
+              alignItems:'center', gap:'8px' }}>
+              ✦ おすすめスポット
+              {recLoading && (
+                <span style={{ fontSize:'11px', color:T.textDim, fontWeight:400 }}>
+                  取得中...
+                </span>
+              )}
+            </div>
+
+            {recSpots.length > 0 && (
+              <>
+                <div style={{ fontSize:'11px', fontWeight:700, color:T.textDim,
+                  letterSpacing:'.06em', marginBottom:'8px' }}>🗺 観光スポット</div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'16px' }}>
+                  {recSpots.map(s => (
+                    <div key={s.id} style={{ background:T.card, border:`1px solid ${T.border}`,
+                      borderRadius:'12px', padding:'12px' }}>
+                      <div style={{ fontSize:'13px', fontWeight:600, color:T.textPri,
+                        marginBottom:'4px', lineHeight:1.3 }}>{s.name}</div>
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                        gap:'4px' }}>
+                        <span style={{ fontSize:'10px', color:T.textDim,
+                          padding:'2px 6px', borderRadius:'20px',
+                          background:T.accent+'18', border:`1px solid ${T.accent}28` }}>
+                          {s.distanceKm.toFixed(1)}km
+                        </span>
+                        <button onClick={() => setQuickAddSpot(s)} style={{
+                          padding:'4px 8px', borderRadius:'8px', border:'none',
+                          background:T.accentDim, color:T.accentLt,
+                          cursor:'pointer', fontSize:'10px', fontWeight:600 }}>
+                          + 追加
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {recRestaurants.length > 0 && (
+              <>
+                <div style={{ fontSize:'11px', fontWeight:700, color:T.textDim,
+                  letterSpacing:'.06em', marginBottom:'8px' }}>🍽 レストラン・カフェ</div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+                  {recRestaurants.map(r => (
+                    <div key={r.id} style={{ background:T.card, border:`1px solid ${T.border}`,
+                      borderRadius:'12px', padding:'12px' }}>
+                      <div style={{ fontSize:'13px', fontWeight:600, color:T.textPri,
+                        marginBottom:'4px', lineHeight:1.3 }}>{r.name}</div>
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                        gap:'4px' }}>
+                        <span style={{ fontSize:'10px', color:T.textDim,
+                          padding:'2px 6px', borderRadius:'20px',
+                          background:'#f06292'+'18', border:`1px solid #f0629228` }}>
+                          {r.distanceKm.toFixed(1)}km
+                        </span>
+                        <button onClick={() => setQuickAddSpot(r)} style={{
+                          padding:'4px 8px', borderRadius:'8px', border:'none',
+                          background:T.accentDim, color:T.accentLt,
+                          cursor:'pointer', fontSize:'10px', fontWeight:600 }}>
+                          + 追加
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {showDayForm && (
@@ -1294,6 +1467,14 @@ export default function TripClient({ trip: initialTrip, session }: {
             setShowTripInfo(false)
           }}
           onClose={() => setShowTripInfo(false)}
+        />
+      )}
+      {quickAddSpot && (
+        <QuickAddSpotModal
+          spot={quickAddSpot}
+          days={trip.days ?? []}
+          onSave={(dayId, ev) => handleAddEvent(dayId, ev)}
+          onClose={() => setQuickAddSpot(null)}
         />
       )}
       {showInvite && (
