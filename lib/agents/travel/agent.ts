@@ -9,14 +9,22 @@ async function resolveCoords(destination: string): Promise<LatLng | null> {
   try {
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(destination)}&format=json&limit=1&accept-language=ja`
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'Tabitomo/1.0' },
+      headers: { 'User-Agent': 'Tabitomo/1.0 (travel-agent)' },
       signal: AbortSignal.timeout(10_000),
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      console.warn('[travel] nominatim status', res.status, 'for', destination)
+      return null
+    }
     const data = await res.json()
-    if (!data?.[0]) return null
+    if (!data?.[0]) {
+      console.warn('[travel] nominatim no match for', destination)
+      return null
+    }
+    console.log(`[travel] geocoded "${destination}" -> ${data[0].display_name} (${data[0].lat},${data[0].lon})`)
     return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
-  } catch {
+  } catch (e: any) {
+    console.warn('[travel] nominatim error:', e?.message)
     return null
   }
 }
