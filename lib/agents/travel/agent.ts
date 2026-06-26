@@ -1,4 +1,4 @@
-import type { TravelAgentInput, TravelRecommendation, LatLng, PlaceCandidate } from './types'
+import type { TravelAgentInput, TravelRecommendation, LatLng, PlaceCandidate, RankedCandidate } from './types'
 import { fetchSpots } from './providers/spots'
 import { fetchRestaurants } from './providers/restaurants'
 import { getPreferences } from './memory/preferences'
@@ -21,7 +21,14 @@ async function resolveCoords(destination: string): Promise<LatLng | null> {
   }
 }
 
-export async function runTravelAgent(input: TravelAgentInput): Promise<TravelRecommendation> {
+/**
+ * Fetch and rank real place candidates (spots + restaurants) without
+ * calling Gemini. Used by the recommendations panel, which only needs
+ * the place lists and must return fast.
+ */
+export async function getRankedCandidates(
+  input: TravelAgentInput,
+): Promise<{ spots: RankedCandidate[]; restaurants: RankedCandidate[] }> {
   const coords: LatLng | null =
     input.lat != null && input.lng != null
       ? { lat: input.lat, lng: input.lng }
@@ -41,10 +48,14 @@ export async function runTravelAgent(input: TravelAgentInput): Promise<TravelRec
 
   const prefs = input.userId ? await getPreferences(input.userId).catch(() => []) : []
 
-  const rankedSpots = rank(rawSpots, input, prefs, 10)
-  const rankedRestaurants = rank(rawRestaurants, input, prefs, 10)
+  return {
+    spots: rank(rawSpots, input, prefs, 10),
+    restaurants: rank(rawRestaurants, input, prefs, 10),
+  }
+}
 
-  const itinerary = await buildItinerary(input, rankedSpots, rankedRestaurants)
-
-  return { itinerary, spots: rankedSpots, restaurants: rankedRestaurants }
+export async function runTravelAgent(input: TravelAgentInput): Promise<TravelRecommendation> {
+  const { spots, restaurants } = await getRankedCandidates(input)
+  const itinerary = await buildItinerary(input, spots, restaurants)
+  return { itinerary, spots, restaurants }
 }
