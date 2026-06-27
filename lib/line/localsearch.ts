@@ -9,6 +9,7 @@ import { replyMessage, textMsg } from '@/lib/line/reply'
 import { runOverpass } from '@/lib/agents/travel/providers/overpass'
 import { haversine } from '@/lib/agents/travel/geo'
 import { geocode } from '@/lib/weather'
+import { getLocale, t, type Locale } from '@/lib/line/i18n'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -18,33 +19,33 @@ function getAdmin() {
 interface Category {
   key: string
   emoji: string
-  label: string
+  labelKey: string      // i18n key, e.g. 'cat_cafe'
   test: RegExp
   selectors: string[]   // Overpass element filters (without around clause)
 }
 
 const CATEGORIES: Category[] = [
-  { key: 'cafe', emoji: '☕', label: 'カフェ', test: /カフェ|喫茶|珈琲|咖啡|コーヒー|coffee/i,
+  { key: 'cafe', emoji: '☕', labelKey: 'cat_cafe', test: /カフェ|喫茶|珈琲|咖啡|コーヒー|coffee/i,
     selectors: ['nwr["amenity"="cafe"]'] },
-  { key: 'ramen', emoji: '🍜', label: 'ラーメン', test: /ラーメン|らーめん|拉麵|拉面|つけ麺/i,
+  { key: 'ramen', emoji: '🍜', labelKey: 'cat_ramen', test: /ラーメン|らーめん|拉麵|拉面|つけ麺/i,
     selectors: ['nwr["cuisine"~"ramen|noodle"]'] },
-  { key: 'sushi', emoji: '🍣', label: '寿司', test: /寿司|鮨|sushi/i,
+  { key: 'sushi', emoji: '🍣', labelKey: 'cat_sushi', test: /寿司|鮨|sushi/i,
     selectors: ['nwr["cuisine"~"sushi"]'] },
-  { key: 'izakaya', emoji: '🍶', label: '居酒屋・バー', test: /居酒屋|izakaya|バー|飲み屋|酒場/i,
+  { key: 'izakaya', emoji: '🍶', labelKey: 'cat_izakaya', test: /居酒屋|izakaya|バー|飲み屋|酒場/i,
     selectors: ['nwr["amenity"~"^(bar|pub)$"]', 'nwr["cuisine"~"izakaya"]'] },
-  { key: 'restaurant', emoji: '🍽', label: 'レストラン', test: /レストラン|餐廳|餐厅|ご飯|ごはん|食事|グルメ|美食|ランチ|ディナー|定食/i,
+  { key: 'restaurant', emoji: '🍽', labelKey: 'cat_restaurant', test: /レストラン|餐廳|餐厅|ご飯|ごはん|食事|グルメ|美食|ランチ|ディナー|定食/i,
     selectors: ['nwr["amenity"="restaurant"]'] },
-  { key: 'convenience', emoji: '🏪', label: 'コンビニ', test: /コンビニ|convenience|便利商店|便利店/i,
+  { key: 'convenience', emoji: '🏪', labelKey: 'cat_convenience', test: /コンビニ|convenience|便利商店|便利店/i,
     selectors: ['nwr["shop"="convenience"]'] },
-  { key: 'onsen', emoji: '♨️', label: '温泉・銭湯', test: /温泉|銭湯|スパ|spa|湯/i,
+  { key: 'onsen', emoji: '♨️', labelKey: 'cat_onsen', test: /温泉|銭湯|スパ|spa|湯/i,
     selectors: ['nwr["amenity"="public_bath"]', 'nwr["leisure"="spa"]', 'nwr["natural"="hot_spring"]'] },
-  { key: 'sightseeing', emoji: '📸', label: '観光スポット', test: /観光|景點|景点|名所|見どころ|スポット|觀光/i,
+  { key: 'sightseeing', emoji: '📸', labelKey: 'cat_sightseeing', test: /観光|景點|景点|名所|見どころ|スポット|觀光/i,
     selectors: ['nwr["tourism"~"attraction|museum|viewpoint|artwork|gallery|theme_park|zoo|aquarium"]', 'nwr["historic"]'] },
-  { key: 'park', emoji: '🌳', label: '公園・庭園', test: /公園|庭園|park|garden/i,
+  { key: 'park', emoji: '🌳', labelKey: 'cat_park', test: /公園|庭園|park|garden/i,
     selectors: ['nwr["leisure"~"^(park|garden)$"]'] },
-  { key: 'hotel', emoji: '🏨', label: 'ホテル・宿', test: /ホテル|hotel|宿泊施設|旅館|民宿/i,
+  { key: 'hotel', emoji: '🏨', labelKey: 'cat_hotel', test: /ホテル|hotel|宿泊施設|旅館|民宿/i,
     selectors: ['nwr["tourism"~"hotel|guest_house|hostel"]'] },
-  { key: 'shopping', emoji: '🛍', label: 'ショッピング', test: /ショッピング|買い物|デパート|モール|百貨|商場/i,
+  { key: 'shopping', emoji: '🛍', labelKey: 'cat_shopping', test: /ショッピング|買い物|デパート|モール|百貨|商場/i,
     selectors: ['nwr["shop"~"mall|department_store"]'] },
 ]
 
@@ -160,11 +161,11 @@ function parseElements(raw: any[], lat: number, lng: number): SearchCandidate[] 
 }
 
 // ── Result carousel ────────────────────────────────────────────
-function resultBubble(c: SearchCandidate, emoji: string, openState: boolean | null): object {
+function resultBubble(c: SearchCandidate, emoji: string, openState: boolean | null, locale: Locale): object {
   const mapQuery = encodeURIComponent(c.name)
-  const statusText = openState === true ? '🟢 営業中'
-    : openState === false ? '🔴 営業時間外'
-    : c.openingHours ? '🕒 時間要確認' : ''
+  const statusText = openState === true ? t(locale, 'openNow')
+    : openState === false ? t(locale, 'closedNow')
+    : c.openingHours ? t(locale, 'checkHours') : ''
   const bodyContents: object[] = [
     { type: 'text', text: `${emoji} ${c.name}`, weight: 'bold', size: 'sm', wrap: true, maxLines: 2 },
     { type: 'text', text: `📏 ${c.distanceKm.toFixed(1)}km`, size: 'xxs', color: '#aaaaaa' },
@@ -186,10 +187,9 @@ function resultBubble(c: SearchCandidate, emoji: string, openState: boolean | nu
 
 async function replyResults(
   replyToken: string, cat: Category, placeLabel: string,
-  candidates: SearchCandidate[], openNow: boolean,
+  candidates: SearchCandidate[], openNow: boolean, locale: Locale,
 ): Promise<void> {
-  let list = candidates
-  let withState: Array<{ c: SearchCandidate; open: boolean | null }> = list.map(c => ({ c, open: isOpenNow(c.openingHours) }))
+  let withState: Array<{ c: SearchCandidate; open: boolean | null }> = candidates.map(c => ({ c, open: isOpenNow(c.openingHours) }))
 
   if (openNow) {
     // keep open or unknown; sort open-first then distance
@@ -203,17 +203,21 @@ async function replyResults(
     withState.sort((a, b) => a.c.distanceKm - b.c.distanceKm)
   }
 
+  const catLabel = t(locale, cat.labelKey)
   const picks = withState.slice(0, 10)
   if (picks.length === 0) {
-    await replyMessage(replyToken, [textMsg(`😢 ${placeLabel}周辺で「${cat.label}」が見つかりませんでした。`)])
+    await replyMessage(replyToken, [textMsg(t(locale, 'notFoundHeader', { place: placeLabel, cat: catLabel }))])
     return
   }
 
-  const header = `${cat.emoji} ${placeLabel}周辺の${cat.label}${openNow ? '（営業中優先）' : ''} ${picks.length}件`
+  const header = t(locale, 'resultsHeader', {
+    emoji: cat.emoji, place: placeLabel, cat: catLabel,
+    suffix: openNow ? t(locale, 'openSuffixPreferred') : '', n: String(picks.length),
+  })
   const carousel = {
     type: 'flex',
     altText: header,
-    contents: { type: 'carousel', contents: picks.map(p => resultBubble(p.c, cat.emoji, p.open)) },
+    contents: { type: 'carousel', contents: picks.map(p => resultBubble(p.c, cat.emoji, p.open, locale)) },
   }
   await replyMessage(replyToken, [textMsg(header), carousel])
 }
@@ -272,6 +276,20 @@ async function searchAdaptive(cat: Category, lat: number, lng: number, radii: nu
   return { list: last, radius: radii[radii.length - 1] }
 }
 
+// Location-request message with a "send location" quick reply button.
+function locationPrompt(cat: Category, cuisine: string | undefined, openNow: boolean, locale: Locale): object {
+  return {
+    type: 'text',
+    text: t(locale, 'currentSearchPrompt', {
+      emoji: cat.emoji,
+      cuisine: cuisine ? cuisine + ' ' : '',
+      cat: t(locale, cat.labelKey),
+      suffix: openNow ? t(locale, 'openSuffix') : '',
+    }),
+    quickReply: { items: [{ type: 'action', action: { type: 'location', label: t(locale, 'sendLocation') } }] },
+  }
+}
+
 /**
  * Handle a "local recommendation" text query. Returns true if consumed.
  * Examples (after @mention):
@@ -283,6 +301,7 @@ export async function handleLocalSearch(
   const cat = detectCategory(text)
   if (!cat || !MARKER.test(text)) return false
 
+  const locale = await getLocale(groupId || userId)
   const openNow = OPEN_NOW.test(text)
   const wantsCurrent = CURRENT_LOC.test(text)
   const place = extractPlace(text, cat)
@@ -290,24 +309,18 @@ export async function handleLocalSearch(
   // Current location requested (or no place name given) → ask for location
   if (wantsCurrent || !place) {
     await saveSession(groupId, userId, { __type: 'localsearch', categoryKey: cat.key, openNow })
-    await replyMessage(replyToken, [{
-      type: 'text',
-      text: `${cat.emoji} 現在地周辺の${cat.label}${openNow ? '（営業中）' : ''}を探します。\n下のボタンから位置情報を送ってください📍`,
-      quickReply: {
-        items: [{ type: 'action', action: { type: 'location', label: '📍 位置情報を送る' } }],
-      },
-    }])
+    await replyMessage(replyToken, [locationPrompt(cat, undefined, openNow, locale)])
     return true
   }
 
   // Named place → geocode then search
   const loc = await geocode(place)
   if (!loc) {
-    await replyMessage(replyToken, [textMsg(`📍「${place}」の場所が見つかりませんでした。`)])
+    await replyMessage(replyToken, [textMsg(t(locale, 'notFoundPlace', { place }))])
     return true
   }
   const candidates = await searchPlaces(cat, loc.lat, loc.lon, RADIUS_NAMED)
-  await replyResults(replyToken, cat, loc.name, candidates, openNow)
+  await replyResults(replyToken, cat, loc.name, candidates, openNow, locale)
   return true
 }
 
@@ -323,8 +336,9 @@ export async function handleLocalSearchLocation(
   await clearSession(groupId, userId)
   const cat = CATEGORIES.find(c => c.key === session.categoryKey)
   if (!cat) return
+  const locale = await getLocale(groupId || userId)
   const { list, radius } = await searchAdaptive(cat, lat, lng, RADII_CURRENT, session.cuisine)
-  await replyResults(replyToken, cat, `現在地（半径${radius}m）`, list, session.openNow)
+  await replyResults(replyToken, cat, t(locale, 'radiusLabel', { r: String(radius) }), list, session.openNow, locale)
 }
 
 /**
@@ -340,23 +354,20 @@ export async function runIntentSearch(
     ?? CATEGORIES.find(c => c.key === 'restaurant')!
   // only keep cuisine when it will actually be applied (restaurant category)
   const cuisine = effectiveCuisine(cat, intent.cuisine || undefined)
+  const locale = await getLocale(groupId || userId)
 
   if (intent.place) {
     const loc = await geocode(intent.place)
     if (!loc) {
-      await replyMessage(replyToken, [textMsg(`📍「${intent.place}」の場所が見つかりませんでした。`)])
+      await replyMessage(replyToken, [textMsg(t(locale, 'notFoundPlace', { place: intent.place }))])
       return
     }
     const list = await searchPlaces(cat, loc.lat, loc.lon, RADIUS_NAMED, cuisine)
-    await replyResults(replyToken, cat, loc.name, list, intent.openNow)
+    await replyResults(replyToken, cat, loc.name, list, intent.openNow, locale)
     return
   }
 
   // No place → current location round-trip (carry cuisine in session)
   await saveSession(groupId, userId, { __type: 'localsearch', categoryKey: cat.key, openNow: intent.openNow, cuisine })
-  await replyMessage(replyToken, [{
-    type: 'text',
-    text: `${cat.emoji} 現在地周辺の${cuisine ? cuisine + ' ' : ''}${cat.label}${intent.openNow ? '（営業中）' : ''}を探します。\n下のボタンから位置情報を送ってください📍`,
-    quickReply: { items: [{ type: 'action', action: { type: 'location', label: '📍 位置情報を送る' } }] },
-  }])
+  await replyMessage(replyToken, [locationPrompt(cat, cuisine, intent.openNow, locale)])
 }
