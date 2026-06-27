@@ -72,13 +72,18 @@ ${convo}
 {
   "found": true または false,
   "category": ${JSON.stringify(CATEGORY_KEYS)} のいずれか,
-  "cuisine": null または OSMの英語cuisine値（例 "seafood","ramen","sushi","italian","chinese","yakiniku","cafe"）,
+  "cuisine": null または OSMの英語cuisine値（例 "seafood","italian","chinese","yakiniku","korean","indian"）,
   "place": null または会話に出た具体的な地名（nullは現在地周辺の意味）,
   "openNow": true または false（今営業中の店に限定したい雰囲気か）
 }
 ルール:
+- cuisine は **category が "restaurant" のとき、特定の料理が明示された場合のみ**設定する。それ以外は必ず null
+- カテゴリ名（cafe/ramen/sushi 等）を cuisine に入れない（cuisine は料理ジャンルのみ）
 - 海鮮/シーフード→category "restaurant", cuisine "seafood"
-- カフェ/コーヒー→"cafe"、ラーメン→"ramen"、寿司→"sushi"、焼肉→category "restaurant" cuisine "yakiniku"
+- 焼肉→category "restaurant", cuisine "yakiniku"
+- カフェ/コーヒー→category "cafe", cuisine null
+- ラーメン→category "ramen", cuisine null
+- 寿司→category "sushi", cuisine null
 - 店や場所を探す意図が読み取れない場合は found=false
 - JSONのみ返す`
 
