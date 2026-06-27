@@ -117,12 +117,29 @@ function isOpenNow(oh?: string): boolean | null {
 }
 
 // ── Overpass search ────────────────────────────────────────────
+// cuisine filtering only makes sense for the generic restaurant category;
+// for specific categories (cafe/ramen/sushi/…) the selector already narrows
+// enough and a cuisine tag filter would over-constrain to near-zero.
+function effectiveCuisine(cat: Category, cuisine?: string): string | undefined {
+  return cuisine && cat.key === 'restaurant' ? cuisine : undefined
+}
+
 async function searchPlaces(cat: Category, lat: number, lng: number, radiusM: number, cuisine?: string): Promise<SearchCandidate[]> {
+  const useCuisine = effectiveCuisine(cat, cuisine)
   const around = `(around:${radiusM},${lat},${lng})`
-  const cuisineFilter = cuisine ? `["cuisine"~"${cuisine}",i]` : ''
-  const body = cat.selectors.map(s => `  ${s}${cuisineFilter}${around};`).join('\n')
-  const query = `[out:json][timeout:15];\n(\n${body}\n);\nout body center;`
-  const raw = await runOverpass(query)
+  const run = async (cuisineVal?: string): Promise<SearchCandidate[]> => {
+    const cuisineFilter = cuisineVal ? `["cuisine"~"${cuisineVal}",i]` : ''
+    const body = cat.selectors.map(s => `  ${s}${cuisineFilter}${around};`).join('\n')
+    const query = `[out:json][timeout:15];\n(\n${body}\n);\nout body center;`
+    return parseElements(await runOverpass(query), lat, lng)
+  }
+  const out = await run(useCuisine)
+  // Fallback: cuisine-tagged matches are sparse in OSM — retry without it.
+  if (out.length === 0 && useCuisine) return run(undefined)
+  return out
+}
+
+function parseElements(raw: any[], lat: number, lng: number): SearchCandidate[] {
   const out: SearchCandidate[] = []
   for (const el of raw) {
     const name: string = el.tags?.['name:ja'] || el.tags?.name || el.tags?.['name:en']
@@ -321,7 +338,8 @@ export async function runIntentSearch(
 ): Promise<void> {
   const cat = CATEGORIES.find(c => c.key === intent.categoryKey)
     ?? CATEGORIES.find(c => c.key === 'restaurant')!
-  const cuisine = intent.cuisine || undefined
+  // only keep cuisine when it will actually be applied (restaurant category)
+  const cuisine = effectiveCuisine(cat, intent.cuisine || undefined)
 
   if (intent.place) {
     const loc = await geocode(intent.place)
