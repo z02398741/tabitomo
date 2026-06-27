@@ -1,11 +1,12 @@
 import { adminClient } from '@/lib/supabase/admin'
-import type { PlaceCandidate } from '../types'
+import type { PlaceCandidate, LatLng } from '../types'
 
 const TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 export interface CachedPlaces {
   spots: PlaceCandidate[]
   restaurants: PlaceCandidate[]
+  center?: LatLng
 }
 
 export function placeCacheKey(destination: string): string {

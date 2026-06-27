@@ -40,6 +40,7 @@ Rules:
 - Include realistic estimated costs in JPY for meals, admissions, activities
 - 節約 budget: public transport, ramen/teishoku, budget hotels; 豪華: premium experiences, good restaurants
 - If candidate spots/restaurants are provided, prefer using them as real place names in the itinerary
+- If a weather forecast is provided and a day has high rain probability (>=60%), make that day indoor-focused (museums, aquariums, hot springs/温泉, shopping, covered arcades, indoor venues) and minimize outdoor activities; favor outdoor sightseeing on clear days
 - Return ONLY the JSON object, nothing else`
 
 export function buildCandidateBlock(spots: RankedCandidate[], restaurants: RankedCandidate[]): string {

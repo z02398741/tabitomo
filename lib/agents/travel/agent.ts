@@ -4,6 +4,30 @@ import { getPreferences } from './memory/preferences'
 import { getCachedPlaces, setCachedPlaces, placeCacheKey } from './memory/placeCache'
 import { rank } from './ranking'
 import { buildItinerary } from './planner'
+import { getWeatherByCoords } from '@/lib/weather'
+
+function addDays(ymd: string, n: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+// Build a per-day weather block for the prompt so the planner can move
+// outdoor plans indoors on rainy days. Empty string when unavailable.
+async function buildWeatherHint(center: LatLng | undefined, startDate: string | undefined, days: number): Promise<string> {
+  if (!center || !startDate) return ''
+  const forecast = await getWeatherByCoords(center.lat, center.lng).catch(() => ({}))
+  const lines: string[] = []
+  for (let i = 0; i < days; i++) {
+    const date = addDays(startDate, i)
+    const w = forecast[date]
+    if (!w) continue
+    const rainy = w.pop >= 60
+    lines.push(`- Day${i + 1} (${date}): ${w.emoji}${w.label} / 最高${w.tmax}℃ 最低${w.tmin}℃ / 降水確率${w.pop}%${rainy ? ' → 屋内中心の予定を推奨' : ''}`)
+  }
+  if (lines.length === 0) return ''
+  return `\n\n## 天気予報（降水確率が高い日は屋内スポットを優先）\n${lines.join('\n')}`
+}
 
 async function resolveCoords(destination: string, japanOnly = false): Promise<LatLng | null> {
   try {
@@ -45,7 +69,7 @@ async function fetchAround(coords: LatLng): Promise<{ spots: PlaceCandidate[]; r
  */
 // Geocode + Overpass fetch (the network-expensive part), with the
 // Japan-biased retry for ambiguous names. No caching, no ranking.
-async function fetchRawCandidates(input: TravelAgentInput): Promise<{ spots: PlaceCandidate[]; restaurants: PlaceCandidate[] }> {
+async function fetchRawCandidates(input: TravelAgentInput): Promise<{ spots: PlaceCandidate[]; restaurants: PlaceCandidate[]; center?: LatLng }> {
   const fromInput = input.lat != null && input.lng != null
   let coords: LatLng | null = fromInput
     ? { lat: input.lat!, lng: input.lng! }
@@ -60,21 +84,22 @@ async function fetchRawCandidates(input: TravelAgentInput): Promise<{ spots: Pla
   if (!fromInput && raw.spots.length === 0 && raw.restaurants.length === 0) {
     const jpCoords = await resolveCoords(input.destination, true)
     if (jpCoords && (jpCoords.lat !== coords?.lat || jpCoords.lng !== coords?.lng)) {
+      coords = jpCoords
       raw = await fetchAround(jpCoords)
     }
   }
-  return raw
+  return { ...raw, center: coords ?? undefined }
 }
 
 export async function getRankedCandidates(
   input: TravelAgentInput,
-): Promise<{ spots: RankedCandidate[]; restaurants: RankedCandidate[] }> {
+): Promise<{ spots: RankedCandidate[]; restaurants: RankedCandidate[]; center?: LatLng }> {
   // Cache the raw candidates per destination (skip cache when explicit
   // coords are passed). Ranking still runs per-request so personalization
   // stays fresh.
   const cacheKey = input.lat == null ? placeCacheKey(input.destination) : null
 
-  let raw: { spots: PlaceCandidate[]; restaurants: PlaceCandidate[] } | null = null
+  let raw: { spots: PlaceCandidate[]; restaurants: PlaceCandidate[]; center?: LatLng } | null = null
   if (cacheKey) raw = await getCachedPlaces(cacheKey).catch(() => null)
 
   if (raw) {
@@ -91,11 +116,13 @@ export async function getRankedCandidates(
   return {
     spots: rank(raw.spots, input, prefs, 10),
     restaurants: rank(raw.restaurants, input, prefs, 10),
+    center: raw.center ?? (input.lat != null && input.lng != null ? { lat: input.lat, lng: input.lng } : undefined),
   }
 }
 
 export async function runTravelAgent(input: TravelAgentInput): Promise<TravelRecommendation> {
-  const { spots, restaurants } = await getRankedCandidates(input)
-  const itinerary = await buildItinerary(input, spots, restaurants)
+  const { spots, restaurants, center } = await getRankedCandidates(input)
+  const weatherHint = await buildWeatherHint(center, input.startDate, input.durationDays)
+  const itinerary = await buildItinerary(input, spots, restaurants, weatherHint)
   return { itinerary, spots, restaurants }
 }
