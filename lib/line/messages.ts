@@ -1,11 +1,18 @@
 import type { ParsedAction } from '@/types/action'
+import { t, type Locale } from '@/lib/line/i18n'
 
 function dayLine(action: ParsedAction): string {
   return action.dayLabel ? `📅 ${action.dayLabel}` : ''
 }
 
-export function confirmationText(action: ParsedAction): string {
-  const lines: string[] = ['✏️ 行程確認\n']
+function fieldLabel(locale: Locale, field?: string): string {
+  return field === 'members' ? t(locale, 'fieldMembers')
+    : field === 'budget' ? t(locale, 'fieldBudget')
+    : t(locale, 'fieldTransport')
+}
+
+export function confirmationText(action: ParsedAction, locale: Locale): string {
+  const lines: string[] = [`${t(locale, 'confirmHeader')}\n`]
 
   switch (action.action) {
     case 'update':
@@ -19,51 +26,47 @@ export function confirmationText(action: ParsedAction): string {
       }
       break
     case 'create':
-      lines.push(`➕ 新增`)
+      lines.push(t(locale, 'lblAdd'))
       if (dayLine(action)) lines.push(dayLine(action))
       lines.push(`${action.time ?? ''} ${action.title ?? ''}`.trim())
       break
     case 'delete':
-      lines.push(`🗑️ 取消`)
+      lines.push(t(locale, 'lblDelete'))
       lines.push(action.eventTitle || '')
       if (dayLine(action)) lines.push(dayLine(action))
       break
     case 'move':
-      lines.push(`📦 移動`)
+      lines.push(t(locale, 'lblMove'))
       lines.push(`${action.eventTitle || ''} → ${action.targetDayLabel || ''}`)
       break
-    case 'trip_update': {
-      const fieldLabel = action.tripField === 'members' ? '人數' : action.tripField === 'budget' ? '預算' : '交通手段'
-      lines.push(`✏️ ${fieldLabel}`)
+    case 'trip_update':
+      lines.push(`✏️ ${fieldLabel(locale, action.tripField)}`)
       lines.push(`→ ${action.tripValue ?? ''}`)
       break
-    }
   }
 
-  lines.push('\n請回覆：確認 / 取消')
+  lines.push(t(locale, 'confirmFooter'))
   return lines.join('\n')
 }
 
-export function successText(action: ParsedAction): string {
+export function successText(action: ParsedAction, locale: Locale): string {
   const day = action.dayLabel ? ` [${action.dayLabel}]` : ''
   switch (action.action) {
     case 'update':
       if (action.delayMinutes) {
         const sign = action.delayMinutes > 0 ? '+' : ''
-        return `✅ ${action.eventTitle}${day} を ${sign}${action.delayMinutes}分 変更しました`
+        return t(locale, 'okUpdateDelay', { title: action.eventTitle ?? '', day, sign, n: String(action.delayMinutes) })
       }
-      return `✅ ${action.eventTitle}${day} を ${action.time} に変更しました`
+      return t(locale, 'okUpdateTime', { title: action.eventTitle ?? '', day, time: action.time ?? '' })
     case 'create':
-      return `✅ 新增了 ${action.title}${day}`
+      return t(locale, 'okCreate', { title: action.title ?? '', day })
     case 'delete':
-      return `✅ 已取消 ${action.eventTitle}${day}`
+      return t(locale, 'okDelete', { title: action.eventTitle ?? '', day })
     case 'move':
-      return `✅ ${action.eventTitle} を ${action.targetDayLabel} へ移動しました`
-    case 'trip_update': {
-      const fieldLabel = action.tripField === 'members' ? '人數' : action.tripField === 'budget' ? '預算' : '交通手段'
-      return `✅ ${fieldLabel} 已更新為 ${action.tripValue ?? ''}`
-    }
+      return t(locale, 'okMove', { title: action.eventTitle ?? '', target: action.targetDayLabel ?? '' })
+    case 'trip_update':
+      return t(locale, 'okTripUpdate', { field: fieldLabel(locale, action.tripField), value: String(action.tripValue ?? '') })
     default:
-      return '✅ 完成'
+      return t(locale, 'okDone')
   }
 }

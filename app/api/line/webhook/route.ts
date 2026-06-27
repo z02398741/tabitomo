@@ -283,7 +283,7 @@ async function handleCommand(
           await replyMessage(replyToken, [textMsg(t(locale, 'execUnsupported'))])
           return
         }
-        await replyMessage(replyToken, [textMsg(successText(action))])
+        await replyMessage(replyToken, [textMsg(successText(action, locale))])
       } catch (e) {
         console.error('execute error:', e)
         await replyMessage(replyToken, [textMsg(t(locale, 'execError'))])
@@ -631,7 +631,7 @@ async function handleCommand(
   // Save pending action and ask for confirmation
   await savePendingAction(groupId, userId, trip.id, parsed)
   await replyMessage(replyToken, [
-    quickReplyMsg(confirmationText(parsed), [
+    quickReplyMsg(confirmationText(parsed, locale), [
       { label: '✅ 確認', text: '確認' },
       { label: '❌ 取消', text: '取消' },
     ]),
