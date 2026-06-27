@@ -89,19 +89,16 @@ export async function geocode(
   return null
 }
 
-export async function getWeather(destination: string): Promise<WeatherResult> {
-  const loc = await geocode(destination)
-  if (!loc) return { location: null, days: {} }
-
+export async function getWeatherByCoords(lat: number, lon: number): Promise<Record<string, DayWeather>> {
   const url =
     `https://api.open-meteo.com/v1/forecast` +
-    `?latitude=${loc.lat}&longitude=${loc.lon}` +
+    `?latitude=${lat}&longitude=${lon}` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
     `&timezone=${encodeURIComponent('Asia/Tokyo')}&forecast_days=16`
 
   try {
     const res = await fetch(url)
-    if (!res.ok) return { location: loc, days: {} }
+    if (!res.ok) return {}
     const data = await res.json()
     const d = data.daily
     const days: Record<string, DayWeather> = {}
@@ -120,9 +117,16 @@ export async function getWeather(destination: string): Promise<WeatherResult> {
         }
       }
     }
-    return { location: loc, days }
+    return days
   } catch (e) {
-    console.error('getWeather error:', e)
-    return { location: loc, days: {} }
+    console.error('getWeatherByCoords error:', e)
+    return {}
   }
+}
+
+export async function getWeather(destination: string): Promise<WeatherResult> {
+  const loc = await geocode(destination)
+  if (!loc) return { location: null, days: {} }
+  const days = await getWeatherByCoords(loc.lat, loc.lon)
+  return { location: loc, days }
 }

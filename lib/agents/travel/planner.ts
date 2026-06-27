@@ -14,6 +14,7 @@ export async function buildItinerary(
   input: TravelAgentInput,
   spots: RankedCandidate[],
   restaurants: RankedCandidate[],
+  weatherHint = '',
 ): Promise<any> {
   const budgetLabel: Record<string, string> = {
     budget: '節約（低予算）',
@@ -31,7 +32,7 @@ export async function buildItinerary(
   ].filter(Boolean).join('\n')
 
   const candidateBlock = buildCandidateBlock(spots, restaurants)
-  const fullPrompt = `${SYSTEM_PROMPT}\n\n以下の条件で旅行行程を作成してください:\n\n${lines}${candidateBlock}`
+  const fullPrompt = `${SYSTEM_PROMPT}\n\n以下の条件で旅行行程を作成してください:\n\n${lines}${candidateBlock}${weatherHint}`
 
   const delays = [1000, 2000]
   for (let attempt = 0; attempt <= delays.length; attempt++) {
