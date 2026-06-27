@@ -240,8 +240,19 @@ function extractPlace(text: string, cat: Category): string {
 }
 
 // ── Entry points ───────────────────────────────────────────────
-const RADIUS_CURRENT = 2500
+// Current-location search keeps tight precision (50–200m): try the
+// smallest radius first and expand only if nothing is found.
+const RADII_CURRENT = [50, 100, 200]
 const RADIUS_NAMED = 4000
+
+async function searchAdaptive(cat: Category, lat: number, lng: number, radii: number[]): Promise<{ list: SearchCandidate[]; radius: number }> {
+  let last: SearchCandidate[] = []
+  for (const r of radii) {
+    last = await searchPlaces(cat, lat, lng, r)
+    if (last.length > 0) return { list: last, radius: r }
+  }
+  return { list: last, radius: radii[radii.length - 1] }
+}
 
 /**
  * Handle a "local recommendation" text query. Returns true if consumed.
@@ -294,6 +305,6 @@ export async function handleLocalSearchLocation(
   await clearSession(groupId, userId)
   const cat = CATEGORIES.find(c => c.key === session.categoryKey)
   if (!cat) return
-  const candidates = await searchPlaces(cat, lat, lng, RADIUS_CURRENT)
-  await replyResults(replyToken, cat, '現在地', candidates, session.openNow)
+  const { list, radius } = await searchAdaptive(cat, lat, lng, RADII_CURRENT)
+  await replyResults(replyToken, cat, `現在地（半径${radius}m）`, list, session.openNow)
 }
