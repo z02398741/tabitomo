@@ -12,6 +12,7 @@ import { getWeather } from '@/lib/weather'
 import { confirmationText, successText } from '@/lib/line/messages'
 import { handleSuggestFlow, handleSuggestDatePostback, handleSuggestConfirm, handleSuggestStepPostback } from '@/lib/line/suggest'
 import { handleLocalSearch, handleLocalSearchLocation } from '@/lib/line/localsearch'
+import { logGroupMessage, handleConversationRecommend } from '@/lib/line/conversation'
 import type { ParsedAction } from '@/types/action'
 
 function getAdmin() {
@@ -210,6 +211,10 @@ async function handleCommand(
   // 当地のおすすめ検索（カフェ・ラーメン・観光 等）— 行程連携なしでも使える
   const localHandled = await handleLocalSearch(text, groupId, userId, replyToken)
   if (localHandled) return
+
+  // 会話コンテキストからの自動おすすめ（曖昧なメンション時）
+  const convoHandled = await handleConversationRecommend(text, groupId, userId, replyToken)
+  if (convoHandled) return
 
   // Fetch trip linked to this group (including tickets nested under events)
   const { data: trip } = await supabase
@@ -725,6 +730,11 @@ export async function POST(req: NextRequest) {
     const replyToken: string = event.replyToken
     const groupId: string = event.source?.groupId || ''
     const userId: string = event.source?.userId || ''
+
+    // Passive log of group conversation for context-aware recommendations
+    // (rolling buffer with TTL). Runs for every text message, before the
+    // mention filter, so prior chatter is available when the bot is called.
+    await logGroupMessage(groupId || userId, userId, text)
 
     const mentionees = event.message?.mention?.mentionees || []
     const isMentionedByObj = mentionees.some((m: { isSelf?: boolean }) => m.isSelf === true)
