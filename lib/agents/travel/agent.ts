@@ -54,6 +54,23 @@ async function resolveCoords(destination: string, japanOnly = false): Promise<La
   }
 }
 
+// Resolve coords for a destination that may list several places
+// (e.g. "広島・宮島・尾道・福山・世羅"): try the full string first, then
+// each segment until one geocodes. Uses the first segment as the center.
+async function resolvePlaceCoords(destination: string, japanOnly = false): Promise<LatLng | null> {
+  const candidates = [destination, ...destination.split(/[・、,，/／·]+/)]
+    .map(s => s.trim())
+    .filter(Boolean)
+  const seen = new Set<string>()
+  for (const c of candidates) {
+    if (seen.has(c)) continue
+    seen.add(c)
+    const r = await resolveCoords(c, japanOnly)
+    if (r) return r
+  }
+  return null
+}
+
 async function fetchAround(coords: LatLng): Promise<{ spots: PlaceCandidate[]; restaurants: PlaceCandidate[] }> {
   try {
     return await fetchPlaces(coords)
@@ -73,7 +90,7 @@ async function fetchRawCandidates(input: TravelAgentInput): Promise<{ spots: Pla
   const fromInput = input.lat != null && input.lng != null
   let coords: LatLng | null = fromInput
     ? { lat: input.lat!, lng: input.lng! }
-    : await resolveCoords(input.destination)
+    : await resolvePlaceCoords(input.destination)
 
   let raw: { spots: PlaceCandidate[]; restaurants: PlaceCandidate[] } = { spots: [], restaurants: [] }
   if (coords) raw = await fetchAround(coords)
@@ -82,7 +99,7 @@ async function fetchRawCandidates(input: TravelAgentInput): Promise<{ spots: Pla
   // POIs (ambiguous name like "大島" landing on the wrong/ocean spot),
   // retry constrained to Japan and re-fetch.
   if (!fromInput && raw.spots.length === 0 && raw.restaurants.length === 0) {
-    const jpCoords = await resolveCoords(input.destination, true)
+    const jpCoords = await resolvePlaceCoords(input.destination, true)
     if (jpCoords && (jpCoords.lat !== coords?.lat || jpCoords.lng !== coords?.lng)) {
       coords = jpCoords
       raw = await fetchAround(jpCoords)
