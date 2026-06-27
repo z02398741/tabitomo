@@ -6,7 +6,10 @@ import { createClient } from '@supabase/supabase-js'
 import { replyMessage, pushMessage, textMsg } from '@/lib/line/reply'
 import { runTravelAgent } from '@/lib/agents/travel/agent'
 import { savePreference } from '@/lib/agents/travel/memory/preferences'
+import { getLocale, t, type Locale } from '@/lib/line/i18n'
 import type { BudgetLevel, RankedCandidate } from '@/lib/agents/travel/types'
+
+const TRIP_URL = 'https://tabitomo-gilt.vercel.app/trips'
 
 // Record a preference signal when a LINE-suggested trip is saved.
 async function recordSuggestPreference(session: SuggestSession, userId: string) {
@@ -101,21 +104,21 @@ const EVENT_ICON: Record<string, string> = {
   transport: '🚢', gather: '📍', meal: '🍽', activity: '🤿', stay: '🏨', free: '🌊',
 }
 
-export function formatPreviewMessages(trip: any): object[] {
+export function formatPreviewMessages(trip: any, locale: Locale): object[] {
   const days: any[] = trip.days ?? []
   const totalEvents = days.reduce((a: number, d: any) => a + (d.events?.length || 0), 0)
 
   const header = [
-    `✦ 行程プレビュー`,
+    t(locale, 'previewHeader'),
     ``,
     `【${trip.title}】`,
     [
-      trip.members ? `👥 ${trip.members}名` : null,
+      trip.members ? `👥 ${trip.members}` : null,
       trip.budget ? `💰 ${trip.budget}` : null,
       trip.transport ? `🚌 ${trip.transport}` : null,
       trip.destination ? `📍 ${trip.destination}` : null,
     ].filter(Boolean).join('  '),
-    `📅 ${days.length}日間 · ${totalEvents}件`,
+    t(locale, 'previewMeta', { days: String(days.length), n: String(totalEvents) }),
   ].filter(s => s !== null).join('\n')
 
   // Build day blocks, split into messages if too long (LINE limit: 5000 chars)
@@ -142,7 +145,7 @@ export function formatPreviewMessages(trip: any): object[] {
     }
   }
   messages.push(textMsg(current))
-  messages.push(makeConfirmFlex())
+  messages.push(makeConfirmFlex(locale))
   return messages
 }
 
@@ -211,72 +214,74 @@ function flexBubble(bodyText: string, footerBtns: object[], altText: string): ob
   }
 }
 
-export function makeDaysFlex(): object {
-  return flexBubble('📅 何日間の旅行ですか？', [
-    flexBtn('2日間', 'suggest:step:days:2', true),
-    flexBtn('3日間', 'suggest:step:days:3'),
-    flexBtn('4日間', 'suggest:step:days:4'),
-    flexBtn('5日間', 'suggest:step:days:5'),
-    flexBtn('7日間', 'suggest:step:days:7'),
-  ], '何日間の旅行ですか？')
+export function makeDaysFlex(locale: Locale): object {
+  const d = (n: number) => t(locale, 'daysBtn', { n: String(n) })
+  return flexBubble(t(locale, 'daysTitle'), [
+    flexBtn(d(2), 'suggest:step:days:2', true),
+    flexBtn(d(3), 'suggest:step:days:3'),
+    flexBtn(d(4), 'suggest:step:days:4'),
+    flexBtn(d(5), 'suggest:step:days:5'),
+    flexBtn(d(7), 'suggest:step:days:7'),
+  ], t(locale, 'daysTitle'))
 }
 
-export function makeMembersFlex(): object {
-  return flexBubble('👥 人数は？（スキップ可）', [
-    flexBtn('1人', 'suggest:step:members:1', true),
-    flexBtn('2人', 'suggest:step:members:2'),
-    flexBtn('3人', 'suggest:step:members:3'),
-    flexBtn('4人', 'suggest:step:members:4'),
-    flexBtn('5人以上', 'suggest:step:members:5'),
-    flexBtn('スキップ', 'suggest:step:members:skip'),
-  ], '人数は？')
+export function makeMembersFlex(locale: Locale): object {
+  const p = (n: number) => t(locale, 'personBtn', { n: String(n) })
+  return flexBubble(t(locale, 'membersTitle'), [
+    flexBtn(p(1), 'suggest:step:members:1', true),
+    flexBtn(p(2), 'suggest:step:members:2'),
+    flexBtn(p(3), 'suggest:step:members:3'),
+    flexBtn(p(4), 'suggest:step:members:4'),
+    flexBtn(t(locale, 'fivePlus'), 'suggest:step:members:5'),
+    flexBtn(t(locale, 'skip'), 'suggest:step:members:skip'),
+  ], t(locale, 'membersTitle'))
 }
 
-export function makeBudgetFlex(): object {
-  return flexBubble('💰 予算感は？', [
-    flexBtn('💴 節約', 'suggest:step:budget:budget', true),
-    flexBtn('😊 普通', 'suggest:step:budget:moderate'),
-    flexBtn('✨ 豪華', 'suggest:step:budget:luxury'),
-  ], '予算感は？')
+export function makeBudgetFlex(locale: Locale): object {
+  return flexBubble(t(locale, 'budgetTitle'), [
+    flexBtn(t(locale, 'budgetBudgetBtn'), 'suggest:step:budget:budget', true),
+    flexBtn(t(locale, 'budgetModerateBtn'), 'suggest:step:budget:moderate'),
+    flexBtn(t(locale, 'budgetLuxuryBtn'), 'suggest:step:budget:luxury'),
+  ], t(locale, 'budgetTitle'))
 }
 
-export function makeNoteMsg(): object {
+export function makeNoteMsg(locale: Locale): object {
   return {
     type: 'flex',
-    altText: 'その他の希望があれば教えてください（スキップ可）',
+    altText: t(locale, 'noteAlt'),
     contents: {
       type: 'bubble',
       body: {
         type: 'box',
         layout: 'vertical',
         contents: [
-          { type: 'text', text: '📝 その他の希望があれば入力してください', weight: 'bold', size: 'md', wrap: true },
-          { type: 'text', text: '例：子連れOK / 海が見えるレストランを入れてほしい', size: 'sm', color: '#aaaaaa', wrap: true, margin: 'sm' },
+          { type: 'text', text: t(locale, 'noteTitle'), weight: 'bold', size: 'md', wrap: true },
+          { type: 'text', text: t(locale, 'noteExample'), size: 'sm', color: '#aaaaaa', wrap: true, margin: 'sm' },
         ],
       },
       footer: {
         type: 'box',
         layout: 'vertical',
         contents: [
-          { type: 'button', style: 'secondary', action: { type: 'postback', label: 'スキップ', data: 'suggest:step:note:skip', displayText: 'スキップ' } },
+          { type: 'button', style: 'secondary', action: { type: 'postback', label: t(locale, 'skip'), data: 'suggest:step:note:skip', displayText: t(locale, 'skip') } },
         ],
       },
     },
   }
 }
 
-export function makeStartDateFlex(): object {
+export function makeStartDateFlex(locale: Locale): object {
   return {
     type: 'flex',
-    altText: '旅行開始日を選んでください',
+    altText: t(locale, 'dateAlt'),
     contents: {
       type: 'bubble',
       body: {
         type: 'box',
         layout: 'vertical',
         contents: [
-          { type: 'text', text: '📅 旅行の開始日は？', weight: 'bold', size: 'md', wrap: true },
-          { type: 'text', text: 'スキップすると未設定のまま保存されます', size: 'sm', color: '#aaaaaa', wrap: true, margin: 'sm' },
+          { type: 'text', text: t(locale, 'dateTitle'), weight: 'bold', size: 'md', wrap: true },
+          { type: 'text', text: t(locale, 'dateHint'), size: 'sm', color: '#aaaaaa', wrap: true, margin: 'sm' },
         ],
       },
       footer: {
@@ -288,12 +293,12 @@ export function makeStartDateFlex(): object {
             type: 'button',
             style: 'primary',
             color: '#6c8ef5',
-            action: { type: 'datetimepicker', label: '📅 日付を選ぶ', data: 'suggest:date', mode: 'date' },
+            action: { type: 'datetimepicker', label: t(locale, 'datePick'), data: 'suggest:date', mode: 'date' },
           },
           {
             type: 'button',
             style: 'secondary',
-            action: { type: 'postback', label: 'スキップ', data: 'suggest:date:skip' },
+            action: { type: 'postback', label: t(locale, 'skip'), data: 'suggest:date:skip' },
           },
         ],
       },
@@ -301,17 +306,17 @@ export function makeStartDateFlex(): object {
   }
 }
 
-export function makeConfirmFlex(): object {
+export function makeConfirmFlex(locale: Locale): object {
   return {
     type: 'flex',
-    altText: 'この内容で保存しますか？',
+    altText: t(locale, 'confirmAlt'),
     contents: {
       type: 'bubble',
       body: {
         type: 'box',
         layout: 'vertical',
         contents: [
-          { type: 'text', text: '✦ 行程を保存しますか？', weight: 'bold', size: 'md', wrap: true },
+          { type: 'text', text: t(locale, 'confirmTitle'), weight: 'bold', size: 'md', wrap: true },
         ],
       },
       footer: {
@@ -323,17 +328,17 @@ export function makeConfirmFlex(): object {
             type: 'button',
             style: 'primary',
             color: '#6c8ef5',
-            action: { type: 'postback', label: '✅ 保存する', data: 'suggest:confirm:save' },
+            action: { type: 'postback', label: t(locale, 'saveBtn'), data: 'suggest:confirm:save' },
           },
           {
             type: 'button',
             style: 'secondary',
-            action: { type: 'postback', label: '🔄 やり直す', data: 'suggest:confirm:redo' },
+            action: { type: 'postback', label: t(locale, 'redoBtn'), data: 'suggest:confirm:redo' },
           },
           {
             type: 'button',
             style: 'secondary',
-            action: { type: 'postback', label: '❌ キャンセル', data: 'suggest:confirm:cancel' },
+            action: { type: 'postback', label: t(locale, 'cancelBtn'), data: 'suggest:confirm:cancel' },
           },
         ],
       },
@@ -350,7 +355,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   beach: '🏖 ビーチ', volcano: '🌋 火山', hot_spring: '♨️ 温泉', viewpoint: '🔭 展望',
 }
 
-function recBubble(c: RankedCandidate): object {
+function recBubble(c: RankedCandidate, locale: Locale): object {
   const label = CATEGORY_LABEL[c.category] ?? `📍 ${c.category}`
   const mapQuery = encodeURIComponent(c.name)
   return {
@@ -374,7 +379,7 @@ function recBubble(c: RankedCandidate): object {
           type: 'button',
           style: 'link',
           height: 'sm',
-          action: { type: 'uri', label: '🗺 地図', uri: `https://www.google.com/maps/search/?api=1&query=${mapQuery}` },
+          action: { type: 'uri', label: t(locale, 'mapBtn'), uri: `https://www.google.com/maps/search/?api=1&query=${mapQuery}` },
         },
       ],
     },
@@ -385,15 +390,15 @@ function recBubble(c: RankedCandidate): object {
  * Build a Flex carousel of recommended spots + restaurants, or null if
  * there are none. Capped at 10 bubbles (LINE carousel limit is 12).
  */
-export function makeRecommendCarousel(spots: RankedCandidate[], restaurants: RankedCandidate[]): object | null {
+export function makeRecommendCarousel(spots: RankedCandidate[], restaurants: RankedCandidate[], locale: Locale): object | null {
   const picks = [...spots.slice(0, 6), ...restaurants.slice(0, 4)]
   if (picks.length === 0) return null
   return {
     type: 'flex',
-    altText: '📍 周辺のおすすめスポット',
+    altText: t(locale, 'recCarouselAlt'),
     contents: {
       type: 'carousel',
-      contents: picks.map(recBubble),
+      contents: picks.map(c => recBubble(c, locale)),
     },
   }
 }
@@ -411,43 +416,42 @@ export async function handleSuggestFlow(
 ): Promise<boolean> {
   const pushTo = groupId || userId
   const session = await getSuggestSession(groupId, userId)
+  const locale = await getLocale(pushTo)
 
   // ── Preview confirm/cancel/restart ───────────────────────────
   if (session?.step === 'preview') {
-    if (/^(保存する|保存|1|①|yes|はい|好)$/i.test(text.trim())) {
-      await replyMessage(replyToken, [textMsg('💾 保存中...')])
+    if (/^(保存する|保存|儲存|1|①|yes|はい|好)$/i.test(text.trim())) {
+      await replyMessage(replyToken, [textMsg(t(locale, 'savingTrip'))])
       try {
         const tripId = await saveTrip(session.generatedTrip, userId)
         await recordSuggestPreference(session, userId)
         await clearSuggestSession(groupId, userId)
-        await pushMessage(pushTo, [textMsg(
-          `✅ 保存しました！\n📍 ${session.generatedTrip?.title}\n\nApp で確認・修正できます：\nhttps://tabitomo-gilt.vercel.app/trips/${tripId}`
-        )])
+        await pushMessage(pushTo, [textMsg(t(locale, 'savedTrip', { title: session.generatedTrip?.title ?? '', url: `${TRIP_URL}/${tripId}` }))])
       } catch (e: any) {
-        await pushMessage(pushTo, [textMsg(`⚠️ 保存に失敗しました: ${e.message}`)])
+        await pushMessage(pushTo, [textMsg(t(locale, 'saveFailed', { err: e.message }))])
       }
       return true
     }
-    if (/^(やり直す|やり直し|再生成|2|②|redo)$/i.test(text.trim())) {
+    if (/^(やり直す|やり直し|再生成|重做|2|②|redo)$/i.test(text.trim())) {
       await clearSuggestSession(groupId, userId)
       // Restart from scratch
-      await replyMessage(replyToken, [textMsg('🔄 最初からやり直します。\n\n📍 目的地を教えてください\n例：沖縄・京都・台北・ソウル')])
+      await replyMessage(replyToken, [textMsg(t(locale, 'restartDest'))])
       await saveSuggestSession(groupId, userId, { __type: 'suggest', action: 'suggest', step: 'destination', confidence: 0, raw: '' })
       return true
     }
     if (/^(キャンセル|取消|不用了|やめる|3|③|cancel)$/i.test(text.trim())) {
       await clearSuggestSession(groupId, userId)
-      await replyMessage(replyToken, [textMsg('❌ キャンセルしました。')])
+      await replyMessage(replyToken, [textMsg(t(locale, 'cancelled'))])
       return true
     }
     // Any other message while in preview — re-show the preview
-    await replyMessage(replyToken, [textMsg('「保存する」「やり直す」「キャンセル」のいずれかで答えてください。')])
+    await replyMessage(replyToken, [textMsg(t(locale, 'previewPrompt'))])
     return true
   }
 
   // ── Collect step-by-step inputs ───────────────────────────────
   if (session) {
-    const next = await processStep(session, text, groupId, userId, replyToken, pushTo)
+    const next = await processStep(session, text, groupId, userId, replyToken, pushTo, locale)
     return next
   }
 
@@ -480,19 +484,19 @@ export async function handleSuggestFlow(
   if (!initial.destination) {
     initial.step = 'destination'
     await saveSuggestSession(groupId, userId, initial)
-    await replyMessage(replyToken, [textMsg('✦ AI行程提案を始めます！\n\n📍 目的地を教えてください\n例：沖縄・京都・台北・ソウル')])
+    await replyMessage(replyToken, [textMsg(t(locale, 'suggestStart'))])
     return true
   }
   if (!initial.days) {
     initial.step = 'days'
     await saveSuggestSession(groupId, userId, initial)
-    await replyMessage(replyToken, [makeDaysFlex()])
+    await replyMessage(replyToken, [makeDaysFlex(locale)])
     return true
   }
   // Both destination and days known — go to startDate
   initial.step = 'startDate'
   await saveSuggestSession(groupId, userId, initial)
-  await replyMessage(replyToken, [makeStartDateFlex()])
+  await replyMessage(replyToken, [makeStartDateFlex(locale)])
   return true
 }
 
@@ -503,6 +507,7 @@ export async function processStep(
   userId: string,
   replyToken: string,
   pushTo: string,
+  locale: Locale,
 ): Promise<boolean> {
   const trim = text.trim()
 
@@ -512,80 +517,79 @@ export async function processStep(
       .replace(/[のでへをにがはも。、！？!?]+$/g, '')
       .trim()
     if (!dest) {
-      await replyMessage(replyToken, [textMsg('📍 目的地を入力してください（例：沖縄・京都・台北）')])
+      await replyMessage(replyToken, [textMsg(t(locale, 'askDest'))])
       return true
     }
     const next = { ...session, destination: dest, step: 'days' as SuggestStep }
     await saveSuggestSession(groupId, userId, next)
-    await replyMessage(replyToken, [makeDaysFlex()])
+    await replyMessage(replyToken, [makeDaysFlex(locale)])
     return true
   }
 
   if (session.step === 'days') {
     const n = parseInt(trim)
     if (isNaN(n) || n < 1 || n > 14) {
-      await replyMessage(replyToken, [makeDaysFlex()])
+      await replyMessage(replyToken, [makeDaysFlex(locale)])
       return true
     }
     const next = { ...session, days: n, step: 'startDate' as SuggestStep }
     await saveSuggestSession(groupId, userId, next)
-    await replyMessage(replyToken, [makeStartDateFlex()])
+    await replyMessage(replyToken, [makeStartDateFlex(locale)])
     return true
   }
 
   if (session.step === 'startDate') {
     // Text fallback: "スキップ" skips, anything else re-shows the Flex
-    if (/スキップ|skip/i.test(trim)) {
+    if (/スキップ|skip|略過/i.test(trim)) {
       const next = { ...session, startDate: undefined, step: 'members' as SuggestStep }
       await saveSuggestSession(groupId, userId, next)
-      await replyMessage(replyToken, [makeMembersFlex()])
+      await replyMessage(replyToken, [makeMembersFlex(locale)])
     } else {
-      await replyMessage(replyToken, [makeStartDateFlex()])
+      await replyMessage(replyToken, [makeStartDateFlex(locale)])
     }
     return true
   }
 
   if (session.step === 'members') {
     let members: number | null = null
-    if (!/スキップ|skip/i.test(trim)) {
+    if (!/スキップ|skip|略過/i.test(trim)) {
       const n = parseInt(trim)
       if (!isNaN(n) && n > 0) members = n
     }
     const next = { ...session, members, step: 'budget' as SuggestStep }
     await saveSuggestSession(groupId, userId, next)
-    await replyMessage(replyToken, [makeBudgetFlex()])
+    await replyMessage(replyToken, [makeBudgetFlex(locale)])
     return true
   }
 
   if (session.step === 'budget') {
     const budgetMap: Record<string, string> = {
-      '節約': 'budget', 'budget': 'budget', '1': 'budget', '①': 'budget',
+      '節約': 'budget', '節省': 'budget', 'budget': 'budget', '1': 'budget', '①': 'budget',
       '普通': 'moderate', 'moderate': 'moderate', '2': 'moderate', '②': 'moderate',
       '豪華': 'luxury', 'luxury': 'luxury', '3': 'luxury', '③': 'luxury',
     }
     const budget = budgetMap[trim] ?? 'moderate'
     const next = { ...session, budget, step: 'note' as SuggestStep }
     await saveSuggestSession(groupId, userId, next)
-    await replyMessage(replyToken, [makeNoteMsg()])
+    await replyMessage(replyToken, [makeNoteMsg(locale)])
     return true
   }
 
   if (session.step === 'note') {
-    const freeNote = /スキップ|skip/i.test(trim) ? '' : trim
+    const freeNote = /スキップ|skip|略過/i.test(trim) ? '' : trim
     const next = { ...session, freeNote, step: 'generating' as SuggestStep }
 
     // Show summary before generating
-    const budgetLabel: Record<string, string> = { budget: '節約', moderate: '普通', luxury: '豪華' }
     const summary = [
-      `✦ 以下の条件で行程を生成します：`,
-      `📍 目的地：${next.destination}`,
-      `📅 ${next.days}日間`,
-      next.startDate ? `🗓 開始日：${next.startDate}` : null,
-      next.members ? `👥 ${next.members}名` : null,
-      next.budget ? `💰 ${budgetLabel[next.budget] ?? next.budget}` : null,
-      next.freeNote ? `📝 ${next.freeNote}` : null,
+      t(locale, 'genHeader'),
+      t(locale, 'genDest', { v: next.destination ?? '' }),
+      t(locale, 'genDays', { v: String(next.days) }),
+      next.startDate ? t(locale, 'genStart', { v: next.startDate }) : null,
+      next.members ? t(locale, 'genMembers', { v: String(next.members) }) : null,
+      next.budget ? t(locale, 'genBudget', { v: t(locale, `budget_${next.budget}`) }) : null,
+      next.freeNote ? t(locale, 'genNote', { v: next.freeNote }) : null,
       ``,
-      `少々お待ちください（10〜20秒）...`,
+      t(locale, 'genWait'),
     ].filter(Boolean).join('\n')
 
     await saveSuggestSession(groupId, userId, next)
@@ -596,14 +600,14 @@ export async function processStep(
       const { trip, spots, restaurants } = await generateTrip(next)
       const withTrip = { ...next, generatedTrip: trip, step: 'preview' as SuggestStep }
       await saveSuggestSession(groupId, userId, withTrip)
-      const previewMsgs = formatPreviewMessages(trip)
+      const previewMsgs = formatPreviewMessages(trip, locale)
       await pushMessage(pushTo, previewMsgs)
-      const recCarousel = makeRecommendCarousel(spots, restaurants)
+      const recCarousel = makeRecommendCarousel(spots, restaurants, locale)
       if (recCarousel) await pushMessage(pushTo, [recCarousel])
     } catch (e: any) {
       console.error('[suggest] generation error:', e)
       await clearSuggestSession(groupId, userId)
-      await pushMessage(pushTo, [textMsg(`⚠️ 生成に失敗しました: ${e.message || 'エラー'}\nもう一度「提案して」で試してください。`)])
+      await pushMessage(pushTo, [textMsg(t(locale, 'genFailed', { err: e.message || 'error' }))])
     }
     return true
   }
@@ -631,8 +635,9 @@ export async function handleSuggestStepPostback(
   const session = await getSuggestSession(groupId, userId)
   if (!session || session.step !== step) return
 
+  const locale = await getLocale(groupId || userId)
   const syntheticText = value === 'skip' ? 'スキップ' : value
-  await processStep(session, syntheticText, groupId, userId, replyToken, groupId || userId)
+  await processStep(session, syntheticText, groupId, userId, replyToken, groupId || userId, locale)
 }
 
 
@@ -649,9 +654,10 @@ export async function handleSuggestDatePostback(
 ): Promise<void> {
   const session = await getSuggestSession(groupId, userId)
   if (!session || session.step !== 'startDate') return
+  const locale = await getLocale(groupId || userId)
   const next = { ...session, startDate: date || undefined, step: 'members' as SuggestStep }
   await saveSuggestSession(groupId, userId, next)
-  await replyMessage(replyToken, [makeMembersFlex()])
+  await replyMessage(replyToken, [makeMembersFlex(locale)])
 }
 
 /**
@@ -666,25 +672,24 @@ export async function handleSuggestConfirm(
   const pushTo = groupId || userId
   const session = await getSuggestSession(groupId, userId)
   if (!session || session.step !== 'preview') return
+  const locale = await getLocale(pushTo)
 
   if (action === 'save') {
-    await replyMessage(replyToken, [textMsg('💾 保存中...')])
+    await replyMessage(replyToken, [textMsg(t(locale, 'savingTrip'))])
     try {
       const tripId = await saveTrip(session.generatedTrip, userId)
       await recordSuggestPreference(session, userId)
       await clearSuggestSession(groupId, userId)
-      await pushMessage(pushTo, [textMsg(
-        `✅ 保存しました！\n📍 ${session.generatedTrip?.title}\n\nApp で確認・修正できます：\nhttps://tabitomo-gilt.vercel.app/trips/${tripId}`
-      )])
+      await pushMessage(pushTo, [textMsg(t(locale, 'savedTrip', { title: session.generatedTrip?.title ?? '', url: `${TRIP_URL}/${tripId}` }))])
     } catch (e: any) {
-      await pushMessage(pushTo, [textMsg(`⚠️ 保存に失敗しました: ${e.message}`)])
+      await pushMessage(pushTo, [textMsg(t(locale, 'saveFailed', { err: e.message }))])
     }
   } else if (action === 'redo') {
     await clearSuggestSession(groupId, userId)
-    await replyMessage(replyToken, [textMsg('🔄 最初からやり直します。\n\n📍 目的地を教えてください\n例：沖縄・京都・台北・ソウル')])
+    await replyMessage(replyToken, [textMsg(t(locale, 'restartDest'))])
     await saveSuggestSession(groupId, userId, { __type: 'suggest', action: 'suggest', step: 'destination', confidence: 0, raw: '' })
   } else {
     await clearSuggestSession(groupId, userId)
-    await replyMessage(replyToken, [textMsg('❌ キャンセルしました。')])
+    await replyMessage(replyToken, [textMsg(t(locale, 'cancelled'))])
   }
 }
