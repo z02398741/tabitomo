@@ -21,6 +21,7 @@ Plan trips together, share itineraries via LINE, and let AI organize your schedu
 - **LINE Bot AI Suggestion** — Trigger step-by-step guided trip planning directly in a LINE chat; uses datetimepicker Flex Message for start date and Flex Message buttons (保存する / やり直す / キャンセル) for final confirmation before saving to DB
 - **LINE OAuth Login** — One-tap sign-in with your LINE account, no password required
 - **LINE Bot (Tabitomo Bot)** — Query today's schedule, upcoming events, specific dates, or weather directly from a LINE group chat; edit events, add/delete, and update trip-level info (人数・予算・交通手段) via natural language
+- **LINE Local Recommendations** — Ask the bot for nearby places by category (cafe, ramen, sightseeing, onsen…) around a named place or your shared GPS location (50m–1km adaptive radius, optional open-now filter); results come as a Flex carousel with map links. Context-aware mode reads the recent group conversation and infers what to recommend (e.g. "海鮮食べたい" → "@Tabi おすすめは？")
 - **Weather Forecast** — Real-time 16-day weather per trip day via Open-Meteo; Nominatim (OpenStreetMap) fallback for locations not in GeoNames (e.g. small islands)
 - **Team Collaboration** — Invite up to 20 members via a shareable link; manage member roles and remove members
 - **Ticket & File Attachments** — Upload PDF/image tickets per event; badge shown on event cards; LINE bot sends them inline
@@ -178,6 +179,19 @@ Once a LINE group is linked to a trip:
 | `@Tabi 京都2泊3日おすすめ行程` | Pre-fills destination + days, asks remaining steps |
 
 The bot guides through: destination → days → start date (datetimepicker) → members → budget → notes → preview (Flex Message confirm)
+
+**Local recommendations (no group link required):**
+
+Finds nearby places by category from OpenStreetMap (Overpass), returned as a Flex carousel with Google Maps links. Categories: cafe, ramen, sushi, izakaya, restaurant, convenience, onsen, sightseeing, park, hotel, shopping.
+
+| Input | Action |
+|-------|--------|
+| `@Tabi 広島のカフェおすすめ` | Search a named place (geocoded) |
+| `@Tabi 近くのラーメン` / `@Tabi 現在地 営業中のカフェ` | Replies with a location button → searches 50m–1km around the shared GPS location (expands until results found); `営業中` filters by opening hours |
+| `@Tabi 尾道で観光スポット教えて` | Sightseeing spots around a place |
+| `@Tabi おすすめは？` (after chatting) | **Context-aware**: reads the recent group conversation, infers what you want (e.g. 海鮮 → seafood) and where, then searches |
+
+The conversation buffer is a rolling ~45-min log of recent group messages; intent is extracted with Gemini only when the bot is mentioned.
 
 **Read commands (all members):**
 

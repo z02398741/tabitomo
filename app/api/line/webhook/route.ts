@@ -539,7 +539,7 @@ async function handleCommand(
   // If user cannot edit, skip AI parse
   if (!canEdit) {
     await replyMessage(replyToken, [textMsg(
-      `🤖 Tabitomo Bot\n\n使い方：\n• 今日の予定は？\n• 行程を見せて\n• 次の予定\n• 成員\n\n✏️ 変更はアプリから：\nhttps://tabitomo-gilt.vercel.app`
+      `🤖 Tabitomo Bot\n\n使い方：\n• 今日の予定は？\n• 行程を見せて\n• 次の予定\n• 成員\n• 近くのカフェ（当地のおすすめ）\n\n✏️ 変更はアプリから：\nhttps://tabitomo-gilt.vercel.app`
     )])
     return
   }
@@ -573,8 +573,13 @@ async function handleCommand(
       `• @Tabi 天気\n\n` +
       `🍜 当地のおすすめ\n` +
       `• @Tabi 広島のカフェおすすめ\n` +
-      `• @Tabi 現在地 営業中のラーメン\n` +
-      `• @Tabi 尾道で観光スポット教えて\n\n` +
+      `• @Tabi 近くのラーメン（位置情報で検索）\n` +
+      `• @Tabi 現在地 営業中のカフェ\n` +
+      `• @Tabi 尾道で観光スポット教えて\n` +
+      `（カフェ／ラーメン／寿司／居酒屋／レストラン／温泉／観光／公園／ホテル など）\n\n` +
+      `💬 会話からおすすめ\n` +
+      `直前の会話を読んで提案します\n` +
+      `例）「海鮮食べたいね」→「@Tabi おすすめは？」\n\n` +
       `✏️ 修改時間\n` +
       `• @Tabi 咖啡廳改下午三點\n` +
       `• @Tabi 晚餐改18:30\n` +
@@ -620,6 +625,10 @@ async function handleCommand(
       `• @Tabi 7/19の予定\n` +
       `• @Tabi Day2\n` +
       `• @Tabi 全程行程\n\n` +
+      `🍜 当地のおすすめ\n` +
+      `• @Tabi 近くのカフェ\n` +
+      `• @Tabi 広島の海鮮おすすめ\n` +
+      `• @Tabi おすすめは？（直前の会話から提案）\n\n` +
       `✏️ 修改時間\n` +
       `• @Tabi 咖啡廳改下午三點\n` +
       `• @Tabi 晚餐改18:30\n` +
