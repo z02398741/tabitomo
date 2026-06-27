@@ -240,9 +240,9 @@ function extractPlace(text: string, cat: Category): string {
 }
 
 // ── Entry points ───────────────────────────────────────────────
-// Current-location search keeps tight precision (50–200m): try the
-// smallest radius first and expand only if nothing is found.
-const RADII_CURRENT = [50, 100, 200]
+// Current-location search prefers precision (50m) and expands up to 1km
+// only when nothing is found nearby.
+const RADII_CURRENT = [50, 100, 200, 500, 1000]
 const RADIUS_NAMED = 4000
 
 async function searchAdaptive(cat: Category, lat: number, lng: number, radii: number[]): Promise<{ list: SearchCandidate[]; radius: number }> {
