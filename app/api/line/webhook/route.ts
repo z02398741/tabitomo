@@ -13,6 +13,7 @@ import { confirmationText, successText } from '@/lib/line/messages'
 import { handleSuggestFlow, handleSuggestDatePostback, handleSuggestConfirm, handleSuggestStepPostback } from '@/lib/line/suggest'
 import { handleLocalSearch, handleLocalSearchLocation } from '@/lib/line/localsearch'
 import { logGroupMessage, handleConversationRecommend } from '@/lib/line/conversation'
+import { getLocale, setLocale, detectLocaleCommand, isLanguageMenu, t } from '@/lib/line/i18n'
 import type { ParsedAction } from '@/types/action'
 
 function getAdmin() {
@@ -185,6 +186,23 @@ async function handleCommand(
   replyToken: string,
 ) {
   const supabase = getAdmin()
+  const convoKey = groupId || userId
+
+  // 言語切替 / 語言切換
+  if (isLanguageMenu(text)) {
+    const cur = await getLocale(convoKey)
+    await replyMessage(replyToken, [quickReplyMsg(t(cur, 'langMenu'), [
+      { label: t(cur, 'langJa'), text: '日本語' },
+      { label: t(cur, 'langZh'), text: '繁體中文' },
+    ])])
+    return
+  }
+  const wantLocale = detectLocaleCommand(text)
+  if (wantLocale) {
+    await setLocale(convoKey, wantLocale)
+    await replyMessage(replyToken, [textMsg(t(wantLocale, 'langChanged'))])
+    return
+  }
 
   // 連携コマンド
   const bindMatch = text.match(/連携\s+([a-f0-9-]{36})/i)
@@ -580,6 +598,9 @@ async function handleCommand(
       `💬 会話からおすすめ\n` +
       `直前の会話を読んで提案します\n` +
       `例）「海鮮食べたいね」→「@Tabi おすすめは？」\n\n` +
+      `🌐 言語 / 語言\n` +
+      `• @Tabi 言語（切替メニュー）\n` +
+      `• @Tabi 中文 / @Tabi 日本語\n\n` +
       `✏️ 修改時間\n` +
       `• @Tabi 咖啡廳改下午三點\n` +
       `• @Tabi 晚餐改18:30\n` +
@@ -751,8 +772,10 @@ export async function POST(req: NextRequest) {
 
     // Allow confirmation replies without @mention (they're direct responses to bot prompt)
     const isConfirmation = /^(確認|確定|はい|yes|ok|OK|好|好的|取消|キャンセル|いいえ|no|No|算了|不用了)$/i.test(text.trim())
+    // Allow language-switch quick-reply taps without @mention
+    const isLangReply = detectLocaleCommand(text) !== null
 
-    if (!isMentionedByObj && !isMentionedByText && !isConfirmation) continue
+    if (!isMentionedByObj && !isMentionedByText && !isConfirmation && !isLangReply) continue
 
     const command = isConfirmation ? text.trim() : text.replace(/@\S+\s*/g, '').trim()
     await handleCommand(command, groupId, userId, replyToken)

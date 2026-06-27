@@ -133,6 +133,7 @@ suggest_sessions   — LINE bot AI suggest session state (15-min TTL)
 travel_preferences — Saved user travel preferences (destination, tags, budget) for personalization
 place_cache        — Cached Overpass/OSM place candidates per destination (7-day TTL)
 chat_messages      — Rolling buffer of recent LINE group messages (~45-min) for context-aware recommendations
+bot_locale         — LINE bot language per group/user (ja / zh)
 user_profiles      — Cached LINE display name & avatar
 audit_logs         — Full change history (INSERT/UPDATE/DELETE) for all tables
 ```
@@ -192,6 +193,16 @@ Finds nearby places by category from OpenStreetMap (Overpass), returned as a Fle
 | `@Tabi おすすめは？` (after chatting) | **Context-aware**: reads the recent group conversation, infers what you want (e.g. 海鮮 → seafood) and where, then searches |
 
 The conversation buffer is a rolling ~45-min log of recent group messages; intent is extracted with Gemini only when the bot is mentioned.
+
+**Language (日本語 / 繁體中文):**
+
+The bot replies for local recommendations & conversation suggestions follow the per-group/user language setting (stored in `bot_locale`).
+
+| Input | Action |
+|-------|--------|
+| `@Tabi 言語` / `@Tabi 語言` | Show a language picker (quick reply) |
+| `@Tabi 中文` / `@Tabi 繁中` | Switch to Traditional Chinese |
+| `@Tabi 日本語` / `@Tabi 日語` | Switch to Japanese |
 
 **Read commands (all members):**
 
@@ -387,6 +398,12 @@ create table chat_messages (
   created_at timestamptz not null default now()
 );
 create index on chat_messages (group_id, created_at desc);
+
+create table bot_locale (
+  key        text        primary key,   -- groupId or userId
+  locale     text        not null default 'ja',  -- 'ja' | 'zh'
+  updated_at timestamptz not null default now()
+);
 
 create table user_profiles (
   id text primary key,

@@ -11,6 +11,7 @@ import { createClient } from '@supabase/supabase-js'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { replyMessage, textMsg } from '@/lib/line/reply'
 import { runIntentSearch } from '@/lib/line/localsearch'
+import { getLocale, t } from '@/lib/line/i18n'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -124,9 +125,8 @@ export async function handleConversationRecommend(
   const intent = await analyzeConversation(messages)
 
   if (!intent.found) {
-    await replyMessage(replyToken, [textMsg(
-      '🤔 会話からお探しのお店が読み取れませんでした。\n例：「@Tabi 近くのカフェ」「@Tabi 広島の海鮮おすすめ」'
-    )])
+    const locale = await getLocale(convoKey)
+    await replyMessage(replyToken, [textMsg(t(locale, 'convoNotFound'))])
     return true
   }
 
