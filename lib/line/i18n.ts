@@ -77,6 +77,72 @@ const D: Record<string, Entry> = {
   cat_park: { ja: '公園・庭園', zh: '公園・庭園' },
   cat_hotel: { ja: 'ホテル・宿', zh: '飯店・住宿' },
   cat_shopping: { ja: 'ショッピング', zh: '購物' },
+
+  // ── AI suggest flow ──
+  savingTrip: { ja: '💾 保存中...', zh: '💾 儲存中…' },
+  savedTrip: {
+    ja: '✅ 保存しました！\n📍 {title}\n\nApp で確認・修正できます：\n{url}',
+    zh: '✅ 已儲存！\n📍 {title}\n\n可在 App 中查看・修改：\n{url}',
+  },
+  saveFailed: { ja: '⚠️ 保存に失敗しました: {err}', zh: '⚠️ 儲存失敗：{err}' },
+  restartDest: {
+    ja: '🔄 最初からやり直します。\n\n📍 目的地を教えてください\n例：沖縄・京都・台北・ソウル',
+    zh: '🔄 重新開始。\n\n📍 請告訴我目的地\n例：沖繩・京都・台北・首爾',
+  },
+  cancelled: { ja: '❌ キャンセルしました。', zh: '❌ 已取消。' },
+  previewPrompt: {
+    ja: '「保存する」「やり直す」「キャンセル」のいずれかで答えてください。',
+    zh: '請回覆「儲存」「重做」「取消」其中之一。',
+  },
+  suggestStart: {
+    ja: '✦ AI行程提案を始めます！\n\n📍 目的地を教えてください\n例：沖縄・京都・台北・ソウル',
+    zh: '✦ 開始 AI 行程提案！\n\n📍 請告訴我目的地\n例：沖繩・京都・台北・首爾',
+  },
+  askDest: { ja: '📍 目的地を入力してください（例：沖縄・京都・台北）', zh: '📍 請輸入目的地（例：沖繩・京都・台北）' },
+  genFailed: {
+    ja: '⚠️ 生成に失敗しました: {err}\nもう一度「提案して」で試してください。',
+    zh: '⚠️ 生成失敗：{err}\n請再輸入「提案」重試一次。',
+  },
+  genHeader: { ja: '✦ 以下の条件で行程を生成します：', zh: '✦ 將以下列條件生成行程：' },
+  genDest: { ja: '📍 目的地：{v}', zh: '📍 目的地：{v}' },
+  genDays: { ja: '📅 {v}日間', zh: '📅 {v}天' },
+  genStart: { ja: '🗓 開始日：{v}', zh: '🗓 出發日：{v}' },
+  genMembers: { ja: '👥 {v}名', zh: '👥 {v}人' },
+  genBudget: { ja: '💰 {v}', zh: '💰 {v}' },
+  genNote: { ja: '📝 {v}', zh: '📝 {v}' },
+  genWait: { ja: '少々お待ちください（10〜20秒）...', zh: '請稍候（約 10〜20 秒）…' },
+
+  budget_budget: { ja: '節約', zh: '節省' },
+  budget_moderate: { ja: '普通', zh: '普通' },
+  budget_luxury: { ja: '豪華', zh: '豪華' },
+
+  // Flex builders
+  daysTitle: { ja: '📅 何日間の旅行ですか？', zh: '📅 要玩幾天呢？' },
+  daysBtn: { ja: '{n}日間', zh: '{n}天' },
+  membersTitle: { ja: '👥 人数は？（スキップ可）', zh: '👥 幾個人？（可略過）' },
+  personBtn: { ja: '{n}人', zh: '{n}人' },
+  fivePlus: { ja: '5人以上', zh: '5人以上' },
+  skip: { ja: 'スキップ', zh: '略過' },
+  budgetTitle: { ja: '💰 予算感は？', zh: '💰 預算大概？' },
+  budgetBudgetBtn: { ja: '💴 節約', zh: '💴 節省' },
+  budgetModerateBtn: { ja: '😊 普通', zh: '😊 普通' },
+  budgetLuxuryBtn: { ja: '✨ 豪華', zh: '✨ 豪華' },
+  noteTitle: { ja: '📝 その他の希望があれば入力してください', zh: '📝 有其他需求請輸入' },
+  noteExample: { ja: '例：子連れOK / 海が見えるレストランを入れてほしい', zh: '例：有帶小孩 / 想安排看得到海的餐廳' },
+  noteAlt: { ja: 'その他の希望があれば教えてください（スキップ可）', zh: '有其他需求請告訴我（可略過）' },
+  dateTitle: { ja: '📅 旅行の開始日は？', zh: '📅 出發日是？' },
+  dateHint: { ja: 'スキップすると未設定のまま保存されます', zh: '略過則不設定出發日' },
+  datePick: { ja: '📅 日付を選ぶ', zh: '📅 選擇日期' },
+  dateAlt: { ja: '旅行開始日を選んでください', zh: '請選擇出發日' },
+  confirmTitle: { ja: '✦ 行程を保存しますか？', zh: '✦ 要儲存這個行程嗎？' },
+  confirmAlt: { ja: 'この内容で保存しますか？', zh: '要以此內容儲存嗎？' },
+  saveBtn: { ja: '✅ 保存する', zh: '✅ 儲存' },
+  redoBtn: { ja: '🔄 やり直す', zh: '🔄 重做' },
+  cancelBtn: { ja: '❌ キャンセル', zh: '❌ 取消' },
+  previewHeader: { ja: '✦ 行程プレビュー', zh: '✦ 行程預覽' },
+  previewMeta: { ja: '📅 {days}日間 · {n}件', zh: '📅 {days}天 · {n}項' },
+  recCarouselAlt: { ja: '📍 周辺のおすすめスポット', zh: '📍 周邊推薦景點' },
+  mapBtn: { ja: '🗺 地図', zh: '🗺 地圖' },
 }
 
 export function t(locale: Locale, key: string, vars?: Record<string, string>): string {
