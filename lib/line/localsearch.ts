@@ -117,9 +117,10 @@ function isOpenNow(oh?: string): boolean | null {
 }
 
 // ── Overpass search ────────────────────────────────────────────
-async function searchPlaces(cat: Category, lat: number, lng: number, radiusM: number): Promise<SearchCandidate[]> {
+async function searchPlaces(cat: Category, lat: number, lng: number, radiusM: number, cuisine?: string): Promise<SearchCandidate[]> {
   const around = `(around:${radiusM},${lat},${lng})`
-  const body = cat.selectors.map(s => `  ${s}${around};`).join('\n')
+  const cuisineFilter = cuisine ? `["cuisine"~"${cuisine}",i]` : ''
+  const body = cat.selectors.map(s => `  ${s}${cuisineFilter}${around};`).join('\n')
   const query = `[out:json][timeout:15];\n(\n${body}\n);\nout body center;`
   const raw = await runOverpass(query)
   const out: SearchCandidate[] = []
@@ -201,7 +202,7 @@ async function replyResults(
 }
 
 // ── Session (for current-location round-trip) ──────────────────
-interface LocalSearchSession { __type: 'localsearch'; categoryKey: string; openNow: boolean }
+interface LocalSearchSession { __type: 'localsearch'; categoryKey: string; openNow: boolean; cuisine?: string }
 
 async function saveSession(groupId: string, userId: string, s: LocalSearchSession) {
   const supabase = getAdmin()
@@ -245,10 +246,10 @@ function extractPlace(text: string, cat: Category): string {
 const RADII_CURRENT = [50, 100, 200, 500, 1000]
 const RADIUS_NAMED = 4000
 
-async function searchAdaptive(cat: Category, lat: number, lng: number, radii: number[]): Promise<{ list: SearchCandidate[]; radius: number }> {
+async function searchAdaptive(cat: Category, lat: number, lng: number, radii: number[], cuisine?: string): Promise<{ list: SearchCandidate[]; radius: number }> {
   let last: SearchCandidate[] = []
   for (const r of radii) {
-    last = await searchPlaces(cat, lat, lng, r)
+    last = await searchPlaces(cat, lat, lng, r, cuisine)
     if (last.length > 0) return { list: last, radius: r }
   }
   return { list: last, radius: radii[radii.length - 1] }
@@ -305,6 +306,39 @@ export async function handleLocalSearchLocation(
   await clearSession(groupId, userId)
   const cat = CATEGORIES.find(c => c.key === session.categoryKey)
   if (!cat) return
-  const { list, radius } = await searchAdaptive(cat, lat, lng, RADII_CURRENT)
+  const { list, radius } = await searchAdaptive(cat, lat, lng, RADII_CURRENT, session.cuisine)
   await replyResults(replyToken, cat, `現在地（半径${radius}m）`, list, session.openNow)
+}
+
+/**
+ * Reusable entry for an already-resolved search intent (e.g. extracted
+ * from group conversation by the LLM). Named place → geocode + search;
+ * no place → ask for current location (carrying cuisine in the session).
+ */
+export async function runIntentSearch(
+  intent: { categoryKey: string; cuisine?: string | null; place?: string | null; openNow: boolean },
+  groupId: string, userId: string, replyToken: string,
+): Promise<void> {
+  const cat = CATEGORIES.find(c => c.key === intent.categoryKey)
+    ?? CATEGORIES.find(c => c.key === 'restaurant')!
+  const cuisine = intent.cuisine || undefined
+
+  if (intent.place) {
+    const loc = await geocode(intent.place)
+    if (!loc) {
+      await replyMessage(replyToken, [textMsg(`📍「${intent.place}」の場所が見つかりませんでした。`)])
+      return
+    }
+    const list = await searchPlaces(cat, loc.lat, loc.lon, RADIUS_NAMED, cuisine)
+    await replyResults(replyToken, cat, loc.name, list, intent.openNow)
+    return
+  }
+
+  // No place → current location round-trip (carry cuisine in session)
+  await saveSession(groupId, userId, { __type: 'localsearch', categoryKey: cat.key, openNow: intent.openNow, cuisine })
+  await replyMessage(replyToken, [{
+    type: 'text',
+    text: `${cat.emoji} 現在地周辺の${cuisine ? cuisine + ' ' : ''}${cat.label}${intent.openNow ? '（営業中）' : ''}を探します。\n下のボタンから位置情報を送ってください📍`,
+    quickReply: { items: [{ type: 'action', action: { type: 'location', label: '📍 位置情報を送る' } }] },
+  }])
 }

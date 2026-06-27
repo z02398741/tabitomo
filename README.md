@@ -131,6 +131,7 @@ pending_actions    — LINE bot confirmations (10-min expiry)
 suggest_sessions   — LINE bot AI suggest session state (15-min TTL)
 travel_preferences — Saved user travel preferences (destination, tags, budget) for personalization
 place_cache        — Cached Overpass/OSM place candidates per destination (7-day TTL)
+chat_messages      — Rolling buffer of recent LINE group messages (~45-min) for context-aware recommendations
 user_profiles      — Cached LINE display name & avatar
 audit_logs         — Full change history (INSERT/UPDATE/DELETE) for all tables
 ```
@@ -363,6 +364,15 @@ create table place_cache (
   expires_at  timestamptz not null,
   created_at  timestamptz not null default now()
 );
+
+create table chat_messages (
+  id         bigserial   primary key,
+  group_id   text        not null,
+  user_id    text        not null,
+  text       text        not null,
+  created_at timestamptz not null default now()
+);
+create index on chat_messages (group_id, created_at desc);
 
 create table user_profiles (
   id text primary key,
