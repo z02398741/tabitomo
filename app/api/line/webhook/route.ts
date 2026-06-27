@@ -11,6 +11,7 @@ import { replyMessage, pushMessage, textMsg, quickReplyMsg } from '@/lib/line/re
 import { getWeather } from '@/lib/weather'
 import { confirmationText, successText } from '@/lib/line/messages'
 import { handleSuggestFlow, handleSuggestDatePostback, handleSuggestConfirm, handleSuggestStepPostback } from '@/lib/line/suggest'
+import { handleLocalSearch, handleLocalSearchLocation } from '@/lib/line/localsearch'
 import type { ParsedAction } from '@/types/action'
 
 function getAdmin() {
@@ -205,6 +206,10 @@ async function handleCommand(
   // AI 行程提案フロー — グループ連携なしでも使える。既存の pending より優先チェック
   const suggestHandled = await handleSuggestFlow(text, groupId, userId, replyToken)
   if (suggestHandled) return
+
+  // 当地のおすすめ検索（カフェ・ラーメン・観光 等）— 行程連携なしでも使える
+  const localHandled = await handleLocalSearch(text, groupId, userId, replyToken)
+  if (localHandled) return
 
   // Fetch trip linked to this group (including tickets nested under events)
   const { data: trip } = await supabase
@@ -561,6 +566,10 @@ async function handleCommand(
       `• @Tabi 何日目\n` +
       `• @Tabi 費用\n` +
       `• @Tabi 天気\n\n` +
+      `🍜 当地のおすすめ\n` +
+      `• @Tabi 広島のカフェおすすめ\n` +
+      `• @Tabi 現在地 営業中のラーメン\n` +
+      `• @Tabi 尾道で観光スポット教えて\n\n` +
       `✏️ 修改時間\n` +
       `• @Tabi 咖啡廳改下午三點\n` +
       `• @Tabi 晚餐改18:30\n` +
@@ -698,6 +707,15 @@ export async function POST(req: NextRequest) {
       } else if (pbData.startsWith('suggest:step:')) {
         await handleSuggestStepPostback(pbData, pbGroupId, pbUserId, pbReplyToken)
       }
+      continue
+    }
+
+    // Location messages — complete a pending current-location search
+    if (event.type === 'message' && event.message?.type === 'location') {
+      await handleLocalSearchLocation(
+        event.message.latitude, event.message.longitude,
+        event.source?.groupId || '', event.source?.userId || '', event.replyToken,
+      )
       continue
     }
 
