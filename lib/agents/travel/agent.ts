@@ -4,7 +4,7 @@ import { getPreferences } from './memory/preferences'
 import { getCachedPlaces, setCachedPlaces, placeCacheKey } from './memory/placeCache'
 import { rank } from './ranking'
 import { buildItinerary } from './planner'
-import { getWeatherByCoords } from '@/lib/weather'
+import { getWeatherByCoords, type DayWeather } from '@/lib/weather'
 
 function addDays(ymd: string, n: number): string {
   const d = new Date(`${ymd}T00:00:00Z`)
@@ -16,7 +16,7 @@ function addDays(ymd: string, n: number): string {
 // outdoor plans indoors on rainy days. Empty string when unavailable.
 async function buildWeatherHint(center: LatLng | undefined, startDate: string | undefined, days: number): Promise<string> {
   if (!center || !startDate) return ''
-  const forecast = await getWeatherByCoords(center.lat, center.lng).catch(() => ({}))
+  const forecast: Record<string, DayWeather> = await getWeatherByCoords(center.lat, center.lng).catch(() => ({}))
   const lines: string[] = []
   for (let i = 0; i < days; i++) {
     const date = addDays(startDate, i)
