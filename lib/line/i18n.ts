@@ -185,6 +185,23 @@ const D: Record<string, Entry> = {
   confirmCancelled: { ja: '取消しました。変更はありません。', zh: '已取消，行程未變更。' },
   execUnsupported: { ja: '⚠️ この操作は自動実行に対応していません。App で修正してください。', zh: '⚠️ 此操作暫不支援自動執行，請在 App 中修改。' },
   execError: { ja: '⚠️ 実行時にエラーが発生しました。App で確認してください。', zh: '⚠️ 執行時發生錯誤，請在 App 中確認。' },
+
+  // ── Edit confirmation / success (messages.ts) ──
+  confirmHeader: { ja: '✏️ 行程確認', zh: '✏️ 行程確認' },
+  confirmFooter: { ja: '\n「確認」/「取消」で答えてください', zh: '\n請回覆：確認 / 取消' },
+  lblAdd: { ja: '➕ 追加', zh: '➕ 新增' },
+  lblDelete: { ja: '🗑️ 削除', zh: '🗑️ 取消' },
+  lblMove: { ja: '📦 移動', zh: '📦 移動' },
+  fieldMembers: { ja: '人数', zh: '人數' },
+  fieldBudget: { ja: '予算', zh: '預算' },
+  fieldTransport: { ja: '交通手段', zh: '交通手段' },
+  okUpdateDelay: { ja: '✅ {title}{day} を {sign}{n}分 変更しました', zh: '✅ 已將 {title}{day} 變更 {sign}{n} 分鐘' },
+  okUpdateTime: { ja: '✅ {title}{day} を {time} に変更しました', zh: '✅ 已將 {title}{day} 改到 {time}' },
+  okCreate: { ja: '✅ {title}{day} を追加しました', zh: '✅ 已新增 {title}{day}' },
+  okDelete: { ja: '✅ {title}{day} を削除しました', zh: '✅ 已取消 {title}{day}' },
+  okMove: { ja: '✅ {title} を {target} へ移動しました', zh: '✅ 已將 {title} 移到 {target}' },
+  okTripUpdate: { ja: '✅ {field} を {value} に更新しました', zh: '✅ {field} 已更新為 {value}' },
+  okDone: { ja: '✅ 完了', zh: '✅ 完成' },
 }
 
 export function t(locale: Locale, key: string, vars?: Record<string, string>): string {
