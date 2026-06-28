@@ -3,6 +3,7 @@
  * pending_actions テーブルを流用して session state を管理する
  */
 import { createClient } from '@supabase/supabase-js'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import { replyMessage, pushMessage, textMsg } from '@/lib/line/reply'
 import { runTravelAgent } from '@/lib/agents/travel/agent'
 import { savePreference } from '@/lib/agents/travel/memory/preferences'
@@ -10,6 +11,48 @@ import { getLocale, t, type Locale } from '@/lib/line/i18n'
 import type { BudgetLevel, RankedCandidate } from '@/lib/agents/travel/types'
 
 const TRIP_URL = 'https://tabitomo-gilt.vercel.app/trips'
+
+// ── Destination suggestion (Gemini) ────────────────────────────
+async function gemJSON(prompt: string): Promise<any> {
+  try {
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+    const r = await model.generateContent(prompt)
+    const raw = r.response.text().trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+    return JSON.parse(raw)
+  } catch (e: any) {
+    console.warn('[suggest] gemJSON error:', e?.message)
+    return null
+  }
+}
+
+// Propose day-trip-feasible destination candidates from the given context.
+async function suggestDestinations(s: SuggestSession, interest?: string): Promise<string[]> {
+  const days = s.days ?? 3
+  const prompt = `あなたは日本の旅行プランナーです。以下の条件で目的地の候補を5つ提案してください。
+出発地: ${s.origin || '指定なし'}
+移動手段: ${s.transport || '指定なし'}
+旅行日数: ${days}日${days === 1 ? '（日帰り）' : ''}
+ジャンル/興味: ${interest || s.freeNote || 'なし'}
+条件:
+- 実在する具体的な地名のみ
+- 日帰りの場合は出発地から移動手段で往復可能な現実的な範囲
+- ジャンルがあればそれに適した場所（例: スキー→スキー場のある地域、登山→登山できる山やエリア、温泉→温泉地）
+- 重複なし
+JSON配列のみ返す。例: ["鎌倉","江ノ島","箱根","熱海","三浦半島"]`
+  const arr = await gemJSON(prompt)
+  return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string').slice(0, 5) : []
+}
+
+// Classify a free-text input as a concrete place or a travel genre/interest.
+async function classifyDestInput(text: string): Promise<{ type: 'place' | 'genre'; value: string }> {
+  const prompt = `ユーザー入力: "${text}"
+これは「具体的な目的地（地名）」ですか、それとも「旅行のジャンル/興味（例: スキー, 登山, 温泉, 海, グルメ, 紅葉）」ですか。
+JSONのみ返す: {"type":"place"または"genre","value":"正規化した値"}`
+  const j = await gemJSON(prompt)
+  if (j && (j.type === 'place' || j.type === 'genre') && typeof j.value === 'string') return j
+  return { type: 'place', value: text }   // default: treat as place
+}
 
 // Record a preference signal when a LINE-suggested trip is saved.
 async function recordSuggestPreference(session: SuggestSession, userId: string) {
@@ -350,6 +393,31 @@ export function makeConfirmFlex(locale: Locale): object {
   }
 }
 
+// Destination candidate buttons (postback suggest:dest:<name>)
+export function makeDestCandidatesFlex(candidates: string[], locale: Locale): object {
+  return flexBubble(
+    t(locale, 'destCandidatesTitle'),
+    candidates.slice(0, 5).map((name, i) => flexBtn(name, `suggest:dest:${name}`, i === 0)),
+    t(locale, 'destCandidatesTitle'),
+  )
+}
+
+// Advance the flow once a destination is chosen (skip days if pre-extracted).
+async function afterDestination(
+  session: SuggestSession, dest: string,
+  groupId: string, userId: string, replyToken: string, locale: Locale,
+): Promise<void> {
+  if (session.days) {
+    const next = { ...session, destination: dest, step: 'startDate' as SuggestStep }
+    await saveSuggestSession(groupId, userId, next)
+    await replyMessage(replyToken, [makeStartDateFlex(locale)])
+  } else {
+    const next = { ...session, destination: dest, step: 'days' as SuggestStep }
+    await saveSuggestSession(groupId, userId, next)
+    await replyMessage(replyToken, [makeDaysFlex(locale)])
+  }
+}
+
 // ── Recommended spots carousel ─────────────────────────────────
 const CATEGORY_LABEL: Record<string, string> = {
   restaurant: '🍽 レストラン', cafe: '☕ カフェ', food_court: '🍜 フードコート',
@@ -467,9 +535,11 @@ export async function handleSuggestFlow(
       && !/\d+\s*泊/.test(text)
       && !/ドライブ旅行|から出発|から出發|から日帰り/.test(text)) return false
 
-  // Departure place: 「從X出發」「Xから出発」「X出発」
+  // Departure place: 「從X出發」「Xから（出発/ドライブ/日帰り）」「X発」
   let origin: string | undefined
-  const originM = text.match(/從(.+?)出[発發]/) || text.match(/(.+?)から(?:出[発發]|日帰り)/)
+  const originM = text.match(/從(.+?)出[発發]/)
+    || text.match(/([^\s、，。0-9０-９]{1,12})から/)
+    || text.match(/([^\s、，。0-9０-９]{1,12})発/)
   if (originM) origin = originM[1].replace(/[\s、，。@Tabi]+/gi, '').trim() || undefined
 
   // Transport
@@ -488,9 +558,14 @@ export async function handleSuggestFlow(
   else if (nightsM) extractedDays = parseInt(nightsM[1]) + 1
   else if (daysM) extractedDays = parseInt(daysM[1])
 
+  // Month (seasonal context) → kept as a note hint
+  const monthM = text.match(/(\d{1,2})\s*月/)
+  const monthNote = monthM ? `${monthM[1]}月` : undefined
+
   // Destination = leftover after removing triggers / origin phrase / transport / month / day tokens
   const rawDest = text
-    .replace(/從(.+?)出[発發]|(.+?)から(?:出[発發]|日帰り)/, '')
+    .replace(/從(.+?)出[発發]/, '')
+    .replace(/([^\s、，。0-9０-９]{1,12})から/, '')
     .replace(/AI行程提案?|コース提案|旅行提案?|提案(して?)?|おすすめ|行程|旅行|して|ください|AI|お願い|生成|コース/g, '')
     .replace(/開車|自駕|自驾|ドライブ旅行|ドライブ|車で|マイカー|レンタカー|電車|新幹線|飛行機|飛機|飞机|高速バス|バス|フェリー/g, '')
     .replace(/日帰り|日歸|日归/g, '')
@@ -508,13 +583,20 @@ export async function handleSuggestFlow(
     days: extractedDays,
     origin,
     transport,
+    freeNote: monthNote,
   }
 
   // Determine first missing step
   if (!initial.destination) {
     initial.step = 'destination'
     await saveSuggestSession(groupId, userId, initial)
-    await replyMessage(replyToken, [textMsg(t(locale, 'suggestStart'))])
+    // Propose candidate destinations instead of just asking
+    const cands = await suggestDestinations(initial)
+    if (cands.length) {
+      await replyMessage(replyToken, [textMsg(t(locale, 'destCandidatesTitle')), makeDestCandidatesFlex(cands, locale)])
+    } else {
+      await replyMessage(replyToken, [textMsg(t(locale, 'suggestStart'))])
+    }
     return true
   }
   if (!initial.days) {
@@ -550,16 +632,20 @@ export async function processStep(
       await replyMessage(replyToken, [textMsg(t(locale, 'askDest'))])
       return true
     }
-    // If days were already extracted (e.g. 日帰り→1), skip the days question
-    if (session.days) {
-      const next = { ...session, destination: dest, step: 'startDate' as SuggestStep }
-      await saveSuggestSession(groupId, userId, next)
-      await replyMessage(replyToken, [makeStartDateFlex(locale)])
+    // Free text could be a place (proceed) or a genre/interest (re-suggest).
+    const cls = await classifyDestInput(dest)
+    if (cls.type === 'genre') {
+      const withInterest = { ...session, freeNote: [session.freeNote, cls.value].filter(Boolean).join(' ') }
+      await saveSuggestSession(groupId, userId, withInterest)
+      const cands = await suggestDestinations(withInterest, cls.value)
+      if (cands.length) {
+        await replyMessage(replyToken, [textMsg(t(locale, 'destCandidatesTitle')), makeDestCandidatesFlex(cands, locale)])
+      } else {
+        await replyMessage(replyToken, [textMsg(t(locale, 'askDest'))])
+      }
       return true
     }
-    const next = { ...session, destination: dest, step: 'days' as SuggestStep }
-    await saveSuggestSession(groupId, userId, next)
-    await replyMessage(replyToken, [makeDaysFlex(locale)])
+    await afterDestination(session, cls.value, groupId, userId, replyToken, locale)
     return true
   }
 
@@ -680,6 +766,22 @@ export async function handleSuggestStepPostback(
 }
 
 
+
+/**
+ * Called when the user taps a destination candidate button.
+ * postbackData: "suggest:dest:<name>"
+ */
+export async function handleSuggestDestPick(
+  name: string,
+  groupId: string,
+  userId: string,
+  replyToken: string,
+): Promise<void> {
+  const session = await getSuggestSession(groupId, userId)
+  if (!session || session.step !== 'destination' || !name) return
+  const locale = await getLocale(groupId || userId)
+  await afterDestination(session, name, groupId, userId, replyToken, locale)
+}
 
 /**
  * Called when LINE fires a postback event from the datetimepicker or skip button.
