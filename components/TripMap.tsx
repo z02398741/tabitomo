@@ -60,6 +60,26 @@ export default function TripMap({ days, selected, onSelect }: {
   const totalPts = days.reduce((a, d) => a + d.events.length, 0)
   if (totalPts === 0) return null
 
+  // Google Maps directions URL for the current selection (in itinerary order)
+  const directionsUrl = (): string | null => {
+    const visible = sel === 'all' ? days : days.filter(d => d.id === sel)
+    const pts: string[] = []
+    for (const d of visible) {
+      [...d.events].sort((a, b) => a.time.localeCompare(b.time)).forEach(e => pts.push(`${e.lat},${e.lng}`))
+    }
+    if (pts.length < 2) return null
+    const origin = pts[0]
+    const destination = pts[pts.length - 1]
+    let mids = pts.slice(1, -1)
+    if (mids.length > 9) {                         // Google api=1 waypoint cap
+      const step = mids.length / 9
+      mids = Array.from({ length: 9 }, (_, i) => mids[Math.floor(i * step)])
+    }
+    const wp = mids.length ? `&waypoints=${encodeURIComponent(mids.join('|'))}` : ''
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${wp}`
+  }
+  const dirUrl = directionsUrl()
+
   const tabBtn = (active: boolean, color?: string): React.CSSProperties => ({
     padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 600,
     border: `1.5px solid ${active ? (color ?? '#6c8ef5') : '#252a3a'}`,
@@ -79,6 +99,16 @@ export default function TripMap({ days, selected, onSelect }: {
         ))}
       </div>
       <div ref={containerRef} style={{ height: '300px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #252a3a' }} />
+      {dirUrl && (
+        <a href={dirUrl} target="_blank" rel="noreferrer" style={{
+          display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '10px',
+          padding: '8px 14px', borderRadius: '10px', textDecoration: 'none',
+          border: '1px solid #4ecdc444', background: '#4ecdc418', color: '#4ecdc4',
+          fontSize: '12px', fontWeight: 600,
+        }}>
+          🧭 Google Maps でルートを開く
+        </a>
+      )}
     </div>
   )
 }
