@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import TabitomoLogo from '@/components/logo/TabitomoLogo'
 import SpotsMap from '@/components/SpotsMap'
+import TripMap, { type MapDay, type MapEvent } from '@/components/TripMap'
 // write operations go through API routes (lib/trips uses server-only env vars)
 async function apiAddEvent(body: object) {
   const res = await fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -1134,6 +1135,33 @@ export default function TripClient({ trip: initialTrip, session }: {
   const [recRestaurants, setRecRestaurants] = useState<RankedCandidate[]>([])
   const [recLoading,    setRecLoading]    = useState(false)
   const [quickAddSpot,  setQuickAddSpot]  = useState<RankedCandidate | null>(null)
+  const [showMap,    setShowMap]    = useState(false)
+  const [mapCoords,  setMapCoords]  = useState<Record<string, { lat: number; lng: number }>>({})
+  const [mapLoading, setMapLoading] = useState(false)
+  const [mapFetched, setMapFetched] = useState(false)
+
+  const toggleMap = async () => {
+    const next = !showMap
+    setShowMap(next)
+    if (!next || mapFetched) return
+    setMapLoading(true)
+    try {
+      const res = await fetch(`/api/trips/${trip.id}/geocode`, { method: 'POST' })
+      if (res.ok) { const { coords } = await res.json(); setMapCoords(coords ?? {}) }
+    } catch { /* ignore — panel just shows nothing */ }
+    finally { setMapLoading(false); setMapFetched(true) }
+  }
+
+  const mapDays: MapDay[] = (trip.days || []).map((d, i) => ({
+    id: d.id,
+    label: d.label,
+    color: DAY_ACCENTS[i % DAY_ACCENTS.length],
+    events: (d.events || []).flatMap((ev): MapEvent[] => {
+      const c = (ev.lat != null && ev.lng != null) ? { lat: ev.lat, lng: ev.lng } : mapCoords[ev.id]
+      return c ? [{ id: ev.id, title: ev.title, time: ev.time, lat: c.lat, lng: c.lng }] : []
+    }),
+  }))
+  const mapHasPoints = mapDays.some(d => d.events.length > 0)
 
   useEffect(() => {
     const dest = trip.destination
@@ -1317,6 +1345,14 @@ export default function TripClient({ trip: initialTrip, session }: {
               color:T.rose, cursor:'pointer', fontSize:'12px', fontWeight:600 }}>
               ⏰ アラート
             </button>
+            <button onClick={toggleMap} style={{ display:'flex',
+              alignItems:'center', gap:'4px', padding:'8px 12px', borderRadius:'10px',
+              border:`1px solid ${showMap ? T.accent : T.border}`,
+              background: showMap ? T.accentDim : T.card,
+              color: showMap ? T.accentLt : T.textSec,
+              cursor:'pointer', fontSize:'12px', fontWeight:600 }}>
+              🗺 地図
+            </button>
             <button onClick={() => setShowExport(true)} style={{ display:'flex',
               alignItems:'center', gap:'4px', padding:'8px 12px', borderRadius:'10px',
               border:`1px solid ${T.border}`, background:T.card, color:T.textSec,
@@ -1355,6 +1391,23 @@ export default function TripClient({ trip: initialTrip, session }: {
 
       {/* Days */}
       <div style={{ padding:'0 20px 40px', maxWidth:'600px', margin:'0 auto' }}>
+        {showMap && (
+          <div style={{ background:T.card, border:`1px solid ${T.border}`,
+            borderRadius:'16px', padding:'14px', marginBottom:'12px' }}>
+            {mapLoading ? (
+              <div style={{ textAlign:'center', padding:'24px 0', color:T.textDim, fontSize:'13px' }}>
+                🗺 地図を準備中...
+              </div>
+            ) : mapHasPoints ? (
+              <TripMap days={mapDays} />
+            ) : (
+              <div style={{ textAlign:'center', padding:'24px 0', color:T.textDim, fontSize:'13px' }}>
+                位置を特定できる予定がありません
+              </div>
+            )}
+          </div>
+        )}
+
         {(trip.days || []).length === 0 && (
           <div style={{ background:T.card, border:`1px solid ${T.border}`,
             borderRadius:'16px', padding:'32px 20px', textAlign:'center',
