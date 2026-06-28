@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import TabitomoLogo from '@/components/logo/TabitomoLogo'
@@ -753,7 +753,7 @@ function EventRow({ ev, accent, isLast, onEdit, onDelete }: {
 }
 
 // ── Day Card ───────────────────────────────────────────────────
-function DayCard({ day, accent, weather, isDragging, isDragOver, onDragStart, onDragOver, onDrop, onDragEnd, onAddEvent, onEditEvent, onDeleteEvent, onDeleteDay, onEditDay }: {
+function DayCard({ day, accent, weather, isDragging, isDragOver, onDragStart, onDragOver, onDrop, onDragEnd, onAddEvent, onEditEvent, onDeleteEvent, onDeleteDay, onEditDay, onShowMap }: {
   day: TripDay & { events?: Event[] }
   accent: string
   weather?: DayWeather
@@ -768,6 +768,7 @@ function DayCard({ day, accent, weather, isDragging, isDragOver, onDragStart, on
   onDeleteEvent: (id: string) => void
   onDeleteDay: (id: string) => void
   onEditDay: (day: TripDay) => void
+  onShowMap: () => void
 }) {
   const [open,          setOpen]          = useState(true)
   const [showEventForm, setShowEventForm] = useState(false)
@@ -831,6 +832,12 @@ function DayCard({ day, accent, weather, isDragging, isDragOver, onDragStart, on
               color:accent, cursor:'pointer', display:'flex',
               alignItems:'center', gap:'4px', fontSize:'11px', fontWeight:700 }}>
               {Ico.plus} 追加
+            </button>
+            <button onClick={onShowMap} title="この日を地図で見る" style={{
+              padding:'6px', borderRadius:'8px',
+              border:`1px solid ${T.border}`, background:'none',
+              color:T.textDim, cursor:'pointer', display:'flex', alignItems:'center', fontSize:'12px' }}>
+              🗺
             </button>
             <button onClick={() => setShowDayEdit(true)} style={{
               padding:'6px', borderRadius:'8px',
@@ -1136,20 +1143,34 @@ export default function TripClient({ trip: initialTrip, session }: {
   const [recLoading,    setRecLoading]    = useState(false)
   const [quickAddSpot,  setQuickAddSpot]  = useState<RankedCandidate | null>(null)
   const [showMap,    setShowMap]    = useState(false)
+  const [mapSel,     setMapSel]     = useState<string>('all')
   const [mapCoords,  setMapCoords]  = useState<Record<string, { lat: number; lng: number }>>({})
   const [mapLoading, setMapLoading] = useState(false)
   const [mapFetched, setMapFetched] = useState(false)
+  const mapPanelRef = useRef<HTMLDivElement>(null)
 
-  const toggleMap = async () => {
-    const next = !showMap
-    setShowMap(next)
-    if (!next || mapFetched) return
+  const ensureGeocoded = async () => {
+    if (mapFetched) return
     setMapLoading(true)
     try {
       const res = await fetch(`/api/trips/${trip.id}/geocode`, { method: 'POST' })
       if (res.ok) { const { coords } = await res.json(); setMapCoords(coords ?? {}) }
     } catch { /* ignore — panel just shows nothing */ }
     finally { setMapLoading(false); setMapFetched(true) }
+  }
+
+  const toggleMap = async () => {
+    const next = !showMap
+    setShowMap(next)
+    if (next) await ensureGeocoded()
+  }
+
+  // Open the map focused on a specific day (from a DayCard's 🗺 button)
+  const showDayOnMap = async (dayId: string) => {
+    setMapSel(dayId)
+    setShowMap(true)
+    setTimeout(() => mapPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+    await ensureGeocoded()
   }
 
   const mapDays: MapDay[] = (trip.days || []).map((d, i) => ({
@@ -1392,14 +1413,14 @@ export default function TripClient({ trip: initialTrip, session }: {
       {/* Days */}
       <div style={{ padding:'0 20px 40px', maxWidth:'600px', margin:'0 auto' }}>
         {showMap && (
-          <div style={{ background:T.card, border:`1px solid ${T.border}`,
+          <div ref={mapPanelRef} style={{ background:T.card, border:`1px solid ${T.border}`,
             borderRadius:'16px', padding:'14px', marginBottom:'12px' }}>
             {mapLoading ? (
               <div style={{ textAlign:'center', padding:'24px 0', color:T.textDim, fontSize:'13px' }}>
                 🗺 地図を準備中...
               </div>
             ) : mapHasPoints ? (
-              <TripMap days={mapDays} />
+              <TripMap days={mapDays} selected={mapSel} onSelect={setMapSel} />
             ) : (
               <div style={{ textAlign:'center', padding:'24px 0', color:T.textDim, fontSize:'13px' }}>
                 位置を特定できる予定がありません
@@ -1435,6 +1456,7 @@ export default function TripClient({ trip: initialTrip, session }: {
             onDeleteEvent={id => handleDeleteEvent(day.id, id)}
             onDeleteDay={handleDeleteDay}
             onEditDay={handleEditDay}
+            onShowMap={() => showDayOnMap(day.id)}
           />
         ))}
 

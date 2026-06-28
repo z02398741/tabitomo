@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import 'leaflet/dist/leaflet.css'
 
 export interface MapEvent { id: string; title: string; time: string; lat: number; lng: number }
@@ -7,12 +7,17 @@ export interface MapDay { id: string; label: string; color: string; events: MapE
 
 // Renders trip events on an OpenStreetMap. Numbering restarts each day
 // (1..n by time), markers colored per day, with a route line per day.
-// "全程" shows all days; tabs switch to a single day. Leaflet is imported
+// "全程" shows all days; tabs switch to a single day. Selection is
+// controlled by the parent ('all' or a day id). Leaflet is imported
 // dynamically so it never runs during SSR.
-export default function TripMap({ days }: { days: MapDay[] }) {
+export default function TripMap({ days, selected, onSelect }: {
+  days: MapDay[]
+  selected: string
+  onSelect: (sel: string) => void
+}) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
-  const [sel, setSel] = useState<string>('all')   // 'all' or a day id
+  const sel = selected
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -66,9 +71,9 @@ export default function TripMap({ days }: { days: MapDay[] }) {
   return (
     <div>
       <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '8px' }}>
-        <button onClick={() => setSel('all')} style={tabBtn(sel === 'all')}>全程</button>
+        <button onClick={() => onSelect('all')} style={tabBtn(sel === 'all')}>全程</button>
         {days.map((d, i) => (
-          <button key={d.id} onClick={() => setSel(d.id)} style={tabBtn(sel === d.id, d.color)}>
+          <button key={d.id} onClick={() => onSelect(d.id)} style={tabBtn(sel === d.id, d.color)}>
             {`Day${i + 1}`}
           </button>
         ))}
