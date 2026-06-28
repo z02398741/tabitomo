@@ -27,8 +27,9 @@ async function gemJSON(prompt: string): Promise<any> {
 }
 
 // Propose day-trip-feasible destination candidates from the given context.
-async function suggestDestinations(s: SuggestSession, interest?: string): Promise<string[]> {
+async function suggestDestinations(s: SuggestSession, interest?: string, exclude?: string[]): Promise<string[]> {
   const days = s.days ?? 3
+  const ex = (exclude && exclude.length) ? `\n次の地名は除外して別の候補を出す: ${JSON.stringify(exclude)}` : ''
   const prompt = `あなたは日本の旅行プランナーです。以下の条件で目的地の候補を5つ提案してください。
 出発地: ${s.origin || '指定なし'}
 移動手段: ${s.transport || '指定なし'}
@@ -38,7 +39,7 @@ async function suggestDestinations(s: SuggestSession, interest?: string): Promis
 - 実在する具体的な地名のみ
 - 日帰りの場合は出発地から移動手段で往復可能な現実的な範囲
 - ジャンルがあればそれに適した場所（例: スキー→スキー場のある地域、登山→登山できる山やエリア、温泉→温泉地）
-- 重複なし
+- 重複なし${ex}
 JSON配列のみ返す。例: ["鎌倉","江ノ島","箱根","熱海","三浦半島"]`
   const arr = await gemJSON(prompt)
   return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string').slice(0, 5) : []
@@ -86,6 +87,7 @@ export interface SuggestSession {
   freeNote?: string
   origin?: string       // 出発地（自然文から抽出）
   transport?: string    // 移動手段
+  destCandidates?: string[]  // last shown destination candidates (for regen)
   generatedTrip?: any   // filled after Gemini generation
   // dummy fields required by pending_actions schema
   action: 'suggest'
@@ -393,13 +395,20 @@ export function makeConfirmFlex(locale: Locale): object {
   }
 }
 
-// Destination candidate buttons (postback suggest:dest:<name>)
+// Destination candidate buttons (postback suggest:dest:<name>) + a regen button
 export function makeDestCandidatesFlex(candidates: string[], locale: Locale): object {
-  return flexBubble(
-    t(locale, 'destCandidatesTitle'),
-    candidates.slice(0, 5).map((name, i) => flexBtn(name, `suggest:dest:${name}`, i === 0)),
-    t(locale, 'destCandidatesTitle'),
-  )
+  const btns = candidates.slice(0, 5).map((name, i) => flexBtn(name, `suggest:dest:${name}`, i === 0))
+  btns.push(flexBtn(t(locale, 'destRegen'), 'suggest:dest:__regen__'))
+  return flexBubble(t(locale, 'destCandidatesTitle'), btns, t(locale, 'destCandidatesTitle'))
+}
+
+// Persist the shown candidates (for regen) and reply with the candidate Flex.
+async function replyDestCandidates(
+  session: SuggestSession, cands: string[],
+  groupId: string, userId: string, replyToken: string, locale: Locale,
+): Promise<void> {
+  await saveSuggestSession(groupId, userId, { ...session, step: 'destination', destCandidates: cands })
+  await replyMessage(replyToken, [textMsg(t(locale, 'destCandidatesTitle')), makeDestCandidatesFlex(cands, locale)])
 }
 
 // Advance the flow once a destination is chosen (skip days if pre-extracted).
@@ -593,7 +602,7 @@ export async function handleSuggestFlow(
     // Propose candidate destinations instead of just asking
     const cands = await suggestDestinations(initial)
     if (cands.length) {
-      await replyMessage(replyToken, [textMsg(t(locale, 'destCandidatesTitle')), makeDestCandidatesFlex(cands, locale)])
+      await replyDestCandidates(initial, cands, groupId, userId, replyToken, locale)
     } else {
       await replyMessage(replyToken, [textMsg(t(locale, 'suggestStart'))])
     }
@@ -636,10 +645,9 @@ export async function processStep(
     const cls = await classifyDestInput(dest)
     if (cls.type === 'genre') {
       const withInterest = { ...session, freeNote: [session.freeNote, cls.value].filter(Boolean).join(' ') }
-      await saveSuggestSession(groupId, userId, withInterest)
       const cands = await suggestDestinations(withInterest, cls.value)
       if (cands.length) {
-        await replyMessage(replyToken, [textMsg(t(locale, 'destCandidatesTitle')), makeDestCandidatesFlex(cands, locale)])
+        await replyDestCandidates(withInterest, cands, groupId, userId, replyToken, locale)
       } else {
         await replyMessage(replyToken, [textMsg(t(locale, 'askDest'))])
       }
@@ -780,6 +788,15 @@ export async function handleSuggestDestPick(
   const session = await getSuggestSession(groupId, userId)
   if (!session || session.step !== 'destination' || !name) return
   const locale = await getLocale(groupId || userId)
+
+  // Regenerate a fresh batch, excluding the ones already shown
+  if (name === '__regen__') {
+    const cands = await suggestDestinations(session, undefined, session.destCandidates)
+    if (cands.length) await replyDestCandidates(session, cands, groupId, userId, replyToken, locale)
+    else await replyMessage(replyToken, [textMsg(t(locale, 'askDest'))])
+    return
+  }
+
   await afterDestination(session, name, groupId, userId, replyToken, locale)
 }
 
