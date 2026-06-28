@@ -28,6 +28,7 @@ export async function buildItinerary(
     input.startDate ? `出発日: ${input.startDate}` : '出発日: 未定（2026年を想定）',
     input.members ? `人数: ${input.members}人` : null,
     `予算感: ${budgetLabel[input.budget] ?? input.budget}`,
+    input.origin ? `出発地: ${input.origin}${input.transport ? `（${input.transport}で往復）` : ''} — 初日の最初と最終日の最後に「${input.origin}」発着を必ず含めること` : (input.transport ? `移動手段: ${input.transport}` : null),
     input.note?.trim() ? `備考: ${input.note.trim()}` : null,
   ].filter(Boolean).join('\n')
 

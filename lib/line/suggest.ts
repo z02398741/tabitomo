@@ -41,6 +41,8 @@ export interface SuggestSession {
   members?: number | null
   budget?: string       // 'budget' | 'moderate' | 'luxury'
   freeNote?: string
+  origin?: string       // 出発地（自然文から抽出）
+  transport?: string    // 移動手段
   generatedTrip?: any   // filled after Gemini generation
   // dummy fields required by pending_actions schema
   action: 'suggest'
@@ -95,6 +97,8 @@ export async function generateTrip(session: SuggestSession): Promise<{ trip: any
     members: session.members ?? 2,
     budget,
     note: session.freeNote?.trim() || undefined,
+    origin: session.origin,
+    transport: session.transport,
   })
   return { trip: rec.itinerary, spots: rec.spots, restaurants: rec.restaurants }
 }
@@ -456,19 +460,43 @@ export async function handleSuggestFlow(
   }
 
   // ── Trigger detection (no session yet) ───────────────────────
-  if (!/提案|おすすめ.*行程|行程.*提案|AI行程|コース提案|旅行提案/.test(text)) return false
+  // Existing keywords OR a "trip-shape" signal (day-trip / drive / N泊 / 出発)
+  const isDayTrip = /日帰り|日歸|日归/.test(text)
+  if (!/提案|おすすめ.*行程|行程.*提案|AI行程|コース提案|旅行提案/.test(text)
+      && !isDayTrip
+      && !/\d+\s*泊/.test(text)
+      && !/ドライブ旅行|から出発|から出發|から日帰り/.test(text)) return false
 
-  // Try to extract destination and days from trigger message
+  // Departure place: 「從X出發」「Xから出発」「X出発」
+  let origin: string | undefined
+  const originM = text.match(/從(.+?)出[発發]/) || text.match(/(.+?)から(?:出[発發]|日帰り)/)
+  if (originM) origin = originM[1].replace(/[\s、，。@Tabi]+/gi, '').trim() || undefined
+
+  // Transport
+  let transport: string | undefined
+  if (/開車|自駕|自驾|ドライブ|車で|マイカー|レンタカー/.test(text)) transport = 'ドライブ'
+  else if (/電車|JR|新幹線/.test(text)) transport = '電車'
+  else if (/飛行機|飛機|飞机|空路/.test(text)) transport = '飛行機'
+  else if (/バス|高速バス/.test(text)) transport = 'バス'
+  else if (/船|フェリー/.test(text)) transport = '船'
+
+  // Days: N泊→N+1, N日/天, or day-trip→1
   const nightsM = text.match(/(\d+)\s*泊/)
   const daysM   = text.match(/(\d+)\s*(?:日間?|天)/)
   let extractedDays: number | undefined
-  if (nightsM) extractedDays = parseInt(nightsM[1]) + 1
+  if (isDayTrip) extractedDays = 1
+  else if (nightsM) extractedDays = parseInt(nightsM[1]) + 1
   else if (daysM) extractedDays = parseInt(daysM[1])
 
+  // Destination = leftover after removing triggers / origin phrase / transport / month / day tokens
   const rawDest = text
+    .replace(/從(.+?)出[発發]|(.+?)から(?:出[発發]|日帰り)/, '')
     .replace(/AI行程提案?|コース提案|旅行提案?|提案(して?)?|おすすめ|行程|旅行|して|ください|AI|お願い|生成|コース/g, '')
+    .replace(/開車|自駕|自驾|ドライブ旅行|ドライブ|車で|マイカー|レンタカー|電車|新幹線|飛行機|飛機|飞机|高速バス|バス|フェリー/g, '')
+    .replace(/日帰り|日歸|日归/g, '')
+    .replace(/\d+\s*月/g, '')
     .replace(/\d+\s*(?:泊\d*日?|日間?|天)/g, '')
-    .replace(/[のでへをにがはも。、！？!?\s@Tabi]+/gi, '')
+    .replace(/[のでへをにがはも。、，！？!?\s@Tabi]+/gi, '')
     .trim()
   const extractedDest = rawDest.length > 0 ? rawDest : undefined
 
@@ -478,6 +506,8 @@ export async function handleSuggestFlow(
     step: 'destination',
     destination: extractedDest,
     days: extractedDays,
+    origin,
+    transport,
   }
 
   // Determine first missing step
@@ -518,6 +548,13 @@ export async function processStep(
       .trim()
     if (!dest) {
       await replyMessage(replyToken, [textMsg(t(locale, 'askDest'))])
+      return true
+    }
+    // If days were already extracted (e.g. 日帰り→1), skip the days question
+    if (session.days) {
+      const next = { ...session, destination: dest, step: 'startDate' as SuggestStep }
+      await saveSuggestSession(groupId, userId, next)
+      await replyMessage(replyToken, [makeStartDateFlex(locale)])
       return true
     }
     const next = { ...session, destination: dest, step: 'days' as SuggestStep }
@@ -584,6 +621,8 @@ export async function processStep(
       t(locale, 'genHeader'),
       t(locale, 'genDest', { v: next.destination ?? '' }),
       t(locale, 'genDays', { v: String(next.days) }),
+      next.origin ? t(locale, 'genOrigin', { v: next.origin }) : null,
+      next.transport ? t(locale, 'genTransport', { v: next.transport }) : null,
       next.startDate ? t(locale, 'genStart', { v: next.startDate }) : null,
       next.members ? t(locale, 'genMembers', { v: String(next.members) }) : null,
       next.budget ? t(locale, 'genBudget', { v: t(locale, `budget_${next.budget}`) }) : null,

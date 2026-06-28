@@ -33,6 +33,8 @@ export interface TravelAgentInput {
   members: number
   budget: BudgetLevel
   note?: string
+  origin?: string        // departure place (round-trip start/end)
+  transport?: string     // e.g. 車/ドライブ・電車・飛行機
   userId?: string
   groupId?: string
   lat?: number
