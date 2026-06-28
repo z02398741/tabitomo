@@ -7,7 +7,7 @@ import { savePendingAction, getPendingAction, clearPendingAction } from '@/lib/a
 import { executeUpdate } from '@/lib/rules/update'
 import { executeCreate } from '@/lib/rules/create'
 import { executeDelete } from '@/lib/rules/delete'
-import { replyMessage, pushMessage, textMsg, quickReplyMsg } from '@/lib/line/reply'
+import { replyMessage, textMsg, quickReplyMsg } from '@/lib/line/reply'
 import { getWeather } from '@/lib/weather'
 import { confirmationText, successText } from '@/lib/line/messages'
 import { handleSuggestFlow, handleSuggestDatePostback, handleSuggestConfirm, handleSuggestStepPostback, handleSuggestDestPick } from '@/lib/line/suggest'
