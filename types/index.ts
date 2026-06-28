@@ -17,6 +17,8 @@ export type Event = {
   cost: number | null
   alert_min: number
   notified_at: string | null
+  lat?: number | null
+  lng?: number | null
   tickets?: Ticket[]
 }
 

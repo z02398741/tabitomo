@@ -17,6 +17,7 @@ Plan trips together, share itineraries via LINE, and let AI organize your schedu
 - **AI Itinerary Suggestion (Web)** — Fill a guided form (destination, days, start date, members, budget, travel style, free notes); the Travel Agent fetches real places and Gemini 2.5 Flash generates a full day-by-day itinerary shown as a preview before saving
 - **Travel Agent (Real Place Enrichment)** — Before planning, the agent geocodes the destination (Nominatim) and pulls real tourism spots and restaurants from OpenStreetMap (Overpass API), ranks them by rating / distance / budget / personal preference, and feeds the top candidates into the planner so itineraries use actual named venues. Degrades gracefully to a plain plan if any provider is unavailable
 - **Recommended Spots Panel** — Trip detail page shows an おすすめスポット panel with an interactive OpenStreetMap (Leaflet) plotting spots + restaurants, plus cards with distance badges; one tap adds any spot to a chosen trip day
+- **Itinerary Map** — A 🗺 地図 panel plots the trip's events on a map with numbered markers (numbering restarts each day, colored per day, route line per day) and a whole-trip / per-day tab switch; event venues are geocoded once (Nominatim) and cached on the event + a `geocode_cache` table
 - **AI Itinerary Import** — Paste raw travel text; Gemini parses it into a structured plan shown as a preview before saving
 - **LINE Bot AI Suggestion** — Trigger step-by-step guided trip planning directly in a LINE chat; uses datetimepicker Flex Message for start date and Flex Message buttons (保存する / やり直す / キャンセル) for final confirmation before saving to DB
 - **LINE OAuth Login** — One-tap sign-in with your LINE account, no password required
@@ -124,7 +125,7 @@ graph TD
 ```
 trips              — Trip metadata (title, budget, transport, destination)
 trip_days          — Days within a trip (ordered by position)
-events             — Events per day (time, type, note, alert_min)
+events             — Events per day (time, type, note, alert_min, lat/lng for the map)
 tickets            — File attachments per event
 trip_members       — User ↔ Trip association (owner / member, max 20)
 invite_tokens      — Shareable invite links (7-day expiry, multi-use)
@@ -134,6 +135,7 @@ travel_preferences — Saved user travel preferences (destination, tags, budget)
 place_cache        — Cached Overpass/OSM place candidates per destination (7-day TTL)
 chat_messages      — Rolling buffer of recent LINE group messages (~45-min) for context-aware recommendations
 bot_locale         — LINE bot language per group/user (ja / zh)
+geocode_cache      — Cached venue→coordinates lookups for the itinerary map
 user_profiles      — Cached LINE display name & avatar
 audit_logs         — Full change history (INSERT/UPDATE/DELETE) for all tables
 ```
@@ -149,6 +151,7 @@ audit_logs         — Full change history (INSERT/UPDATE/DELETE) for all tables
 | DELETE | `/api/trips/[id]` | Delete trip (owner only) |
 | POST | `/api/trips/import` | AI-powered itinerary import |
 | GET/DELETE | `/api/trips/[id]/members` | List / remove members |
+| POST | `/api/trips/[id]/geocode` | Geocode trip event venues for the itinerary map (cached) |
 | POST/DELETE | `/api/trips/[id]/invite` | Generate / revoke invite link |
 | GET/POST | `/api/trips/[id]/alert` | Notification settings |
 | GET/POST | `/api/days` | List / create days |
