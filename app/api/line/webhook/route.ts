@@ -10,7 +10,7 @@ import { executeDelete } from '@/lib/rules/delete'
 import { replyMessage, pushMessage, textMsg, quickReplyMsg } from '@/lib/line/reply'
 import { getWeather } from '@/lib/weather'
 import { confirmationText, successText } from '@/lib/line/messages'
-import { handleSuggestFlow, handleSuggestDatePostback, handleSuggestConfirm, handleSuggestStepPostback } from '@/lib/line/suggest'
+import { handleSuggestFlow, handleSuggestDatePostback, handleSuggestConfirm, handleSuggestStepPostback, handleSuggestDestPick } from '@/lib/line/suggest'
 import { handleLocalSearch, handleLocalSearchLocation } from '@/lib/line/localsearch'
 import { logGroupMessage, handleConversationRecommend } from '@/lib/line/conversation'
 import { getLocale, setLocale, detectLocaleCommand, isLanguageMenu, t, helpText, helpNonEditorText, type Locale } from '@/lib/line/i18n'
@@ -662,6 +662,8 @@ export async function POST(req: NextRequest) {
       } else if (pbData.startsWith('suggest:confirm:')) {
         const confirmAction = pbData.replace('suggest:confirm:', '') as 'save' | 'redo' | 'cancel'
         await handleSuggestConfirm(confirmAction, pbGroupId, pbUserId, pbReplyToken)
+      } else if (pbData.startsWith('suggest:dest:')) {
+        await handleSuggestDestPick(pbData.slice('suggest:dest:'.length), pbGroupId, pbUserId, pbReplyToken)
       } else if (pbData.startsWith('suggest:step:')) {
         await handleSuggestStepPostback(pbData, pbGroupId, pbUserId, pbReplyToken)
       }
