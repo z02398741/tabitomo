@@ -178,8 +178,26 @@ Once a LINE group is linked to a trip:
 |-------|--------|
 | `@Tabi 沖縄3日提案して` | Start step-by-step AI itinerary suggestion |
 | `@Tabi 京都2泊3日おすすめ行程` | Pre-fills destination + days, asks remaining steps |
+| `@Tabi 鎌倉 橋本から ドライブ 日帰り` | Natural-language: extracts origin / transport / day-trip |
 
-The bot guides through: destination → days → start date (datetimepicker) → members → budget → notes → preview (Flex Message confirm)
+The bot guides through: destination → days → start date (datetimepicker) → members → budget → notes → preview (Flex Message confirm). Triggers also fire on natural phrasing (日帰り / N泊 / `Xから` / ドライブ), and the message is mined for **departure place** (`從X出發` / `Xから`), **transport** (開車・電車・飛行機…), and **day-trip** (→ 1 day) — fed to the planner for a round trip.
+
+When no destination is given, the bot proposes **candidate destinations** (Gemini, aware of origin/transport/day-trip/season) as tappable buttons instead of just asking. Typing an interest (e.g. `スキー`, `登山`) re-suggests destinations for that activity, and 🔄 別の候補 fetches a fresh batch.
+
+**Example walkthrough:**
+
+```
+You:  @Tabi 9月 橋本から ドライブ 日帰り
+Bot:  📍 目的地の候補です（タップ、または「スキー」「登山」などジャンルで絞り込み）
+      [鎌倉] [江ノ島] [箱根] [熱海] [三浦半島] [🔄 別の候補]
+You:  (tap 箱根)
+Bot:  📅 旅行の開始日は？           ← days skipped (日帰り → 1 day)
+You:  (pick a date, or skip)
+Bot:  👥 人数は？ → 💰 予算感は？ → 📝 その他の希望
+Bot:  ✦ 以下の条件で行程を生成します：
+      📍 箱根 / 📅 1日間 / 🚩 出発地：橋本 / 🚗 ドライブ / 📝 9月
+      → 橋本発着の日帰りドライブ行程 + 周辺のおすすめスポット
+```
 
 **Local recommendations (no group link required):**
 
