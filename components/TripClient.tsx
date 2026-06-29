@@ -634,6 +634,8 @@ function QuickAddSpotModal({ spot, days, destination, onSave, onClose }: {
         location: spot.name,
         cost: null,
         alert_min: 30,
+        lat: spot.latLng.lat,   // store exact coords so the map needs no geocoding
+        lng: spot.latLng.lng,
       })
       // Record a preference signal — adding a spot means the user likes
       // this kind of place. Fire-and-forget; never block the add.
