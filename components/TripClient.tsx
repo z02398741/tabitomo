@@ -66,6 +66,17 @@ const T = {
 
 const DAY_ACCENTS = ['#6c8ef5','#4ecdc4','#f5a623','#f06292','#a78bfa']
 
+// Map a free-text transport (ja/zh) to a Google Maps travelmode
+function googleTravelMode(transport?: string | null): string | undefined {
+  if (!transport) return undefined
+  const t = transport.toLowerCase()
+  if (/車|ドライブ|自駕|自驾|開車|レンタカー|マイカー|driv|car/.test(t)) return 'driving'
+  if (/徒歩|歩き|walk|步行|散策/.test(t)) return 'walking'
+  if (/自転車|自行車|bicycle|bike|サイクリング/.test(t)) return 'bicycling'
+  if (/電車|新幹線|jr|バス|bus|フェリー|船|飛行機|飛機|地下鉄|公共|transit|train/.test(t)) return 'transit'
+  return undefined
+}
+
 const TYPE_META: Record<string, { label: string; color: string; icon: string }> = {
   transport: { label:'移動', color:'#6c8ef5', icon:'🚢' },
   gather:    { label:'集合', color:'#f5a623', icon:'📍' },
@@ -1420,7 +1431,8 @@ export default function TripClient({ trip: initialTrip, session }: {
                 🗺 地図を準備中...
               </div>
             ) : mapHasPoints ? (
-              <TripMap days={mapDays} selected={mapSel} onSelect={setMapSel} />
+              <TripMap days={mapDays} selected={mapSel} onSelect={setMapSel}
+                travelMode={googleTravelMode(trip.transport)} />
             ) : (
               <div style={{ textAlign:'center', padding:'24px 0', color:T.textDim, fontSize:'13px' }}>
                 位置を特定できる予定がありません
