@@ -10,10 +10,11 @@ export interface MapDay { id: string; label: string; color: string; events: MapE
 // "全程" shows all days; tabs switch to a single day. Selection is
 // controlled by the parent ('all' or a day id). Leaflet is imported
 // dynamically so it never runs during SSR.
-export default function TripMap({ days, selected, onSelect }: {
+export default function TripMap({ days, selected, onSelect, travelMode }: {
   days: MapDay[]
   selected: string
   onSelect: (sel: string) => void
+  travelMode?: string   // google maps: driving | walking | bicycling | transit
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
@@ -76,7 +77,8 @@ export default function TripMap({ days, selected, onSelect }: {
       mids = Array.from({ length: 9 }, (_, i) => mids[Math.floor(i * step)])
     }
     const wp = mids.length ? `&waypoints=${encodeURIComponent(mids.join('|'))}` : ''
-    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${wp}`
+    const tm = travelMode ? `&travelmode=${travelMode}` : ''
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${wp}${tm}`
   }
   const dirUrl = directionsUrl()
 
