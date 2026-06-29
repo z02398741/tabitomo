@@ -1162,11 +1162,11 @@ export default function TripClient({ trip: initialTrip, session }: {
   const [mapFetched, setMapFetched] = useState(false)
   const mapPanelRef = useRef<HTMLDivElement>(null)
 
-  const ensureGeocoded = async () => {
-    if (mapFetched) return
+  const ensureGeocoded = async (force = false) => {
+    if (mapFetched && !force) return
     setMapLoading(true)
     try {
-      const res = await fetch(`/api/trips/${trip.id}/geocode`, { method: 'POST' })
+      const res = await fetch(`/api/trips/${trip.id}/geocode${force ? '?force=1' : ''}`, { method: 'POST' })
       if (res.ok) { const { coords } = await res.json(); setMapCoords(coords ?? {}) }
     } catch { /* ignore — panel just shows nothing */ }
     finally { setMapLoading(false); setMapFetched(true) }
@@ -1191,7 +1191,11 @@ export default function TripClient({ trip: initialTrip, session }: {
     label: d.label,
     color: DAY_ACCENTS[i % DAY_ACCENTS.length],
     events: (d.events || []).flatMap((ev): MapEvent[] => {
-      const c = (ev.lat != null && ev.lng != null) ? { lat: ev.lat, lng: ev.lng } : mapCoords[ev.id]
+      // After a geocode fetch, trust the returned map (so cleared bad
+      // points disappear); before it, use any server-loaded coords.
+      const c = mapFetched
+        ? mapCoords[ev.id]
+        : ((ev.lat != null && ev.lng != null) ? { lat: ev.lat, lng: ev.lng } : mapCoords[ev.id])
       return c ? [{ id: ev.id, title: ev.title, time: ev.time, lat: c.lat, lng: c.lng }] : []
     }),
   }))
@@ -1432,13 +1436,24 @@ export default function TripClient({ trip: initialTrip, session }: {
               <div style={{ textAlign:'center', padding:'24px 0', color:T.textDim, fontSize:'13px' }}>
                 🗺 地図を準備中...
               </div>
-            ) : mapHasPoints ? (
-              <TripMap days={mapDays} selected={mapSel} onSelect={setMapSel}
-                travelMode={googleTravelMode(trip.transport)} />
             ) : (
-              <div style={{ textAlign:'center', padding:'24px 0', color:T.textDim, fontSize:'13px' }}>
-                位置を特定できる予定がありません
-              </div>
+              <>
+                <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:'8px' }}>
+                  <button onClick={() => ensureGeocoded(true)} style={{
+                    padding:'5px 12px', borderRadius:'8px', border:`1px solid ${T.border}`,
+                    background:'none', color:T.textSec, cursor:'pointer', fontSize:'11px', fontWeight:600 }}>
+                    🔄 再定位
+                  </button>
+                </div>
+                {mapHasPoints ? (
+                  <TripMap days={mapDays} selected={mapSel} onSelect={setMapSel}
+                    travelMode={googleTravelMode(trip.transport)} />
+                ) : (
+                  <div style={{ textAlign:'center', padding:'24px 0', color:T.textDim, fontSize:'13px' }}>
+                    位置を特定できる予定がありません
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

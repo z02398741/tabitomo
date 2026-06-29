@@ -43,12 +43,16 @@ async function geocode(query: string, viewbox?: string): Promise<GeoResult | nul
   }
 }
 
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
   const userId = (session.user as any).id
   if (!(await isTripMember(id, userId))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  // force=1 re-geocodes every event (ignoring stored coords + cache) and
+  // clears coordinates that no longer resolve — used by the "再定位" button.
+  const force = new URL(req.url).searchParams.get('force') === '1'
 
   const supabase = getAdmin()
   const { data: trip } = await supabase
@@ -88,14 +92,17 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       continue
     }
 
-    if (ev.lat != null && ev.lng != null) { coords[ev.id] = { lat: ev.lat, lng: ev.lng }; continue }
+    const hadCoords = ev.lat != null && ev.lng != null
+    if (!force && hadCoords) { coords[ev.id] = { lat: ev.lat, lng: ev.lng }; continue }
 
     // Prefer a real venue (location); fall back to the title.
     const base = (location || title).replace(/\s+/g, ' ').trim()
-    if (!base || calls >= 60) continue
+    if (!base || calls >= 60) { if (!force && hadCoords) coords[ev.id] = { lat: ev.lat, lng: ev.lng }; continue }
     const key = `${base}|${viewbox ?? ''}`.toLowerCase().slice(0, 250)
 
-    const { data: cached } = await supabase.from('geocode_cache').select('lat, lng').eq('query', key).maybeSingle()
+    const { data: cached } = force
+      ? { data: null }
+      : await supabase.from('geocode_cache').select('lat, lng').eq('query', key).maybeSingle()
     let hit = cached as { lat: number; lng: number } | null
     if (!hit) {
       calls++
@@ -109,6 +116,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     if (hit) {
       coords[ev.id] = { lat: hit.lat, lng: hit.lng }
       await supabase.from('events').update({ lat: hit.lat, lng: hit.lng }).eq('id', ev.id)
+    } else if (force && hadCoords) {
+      // re-geocode failed → drop the now-invalid stored coordinate
+      await supabase.from('events').update({ lat: null, lng: null }).eq('id', ev.id)
     }
   }
 
